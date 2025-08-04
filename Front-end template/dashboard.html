@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>ভাণ্ড - File Storage</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -208,6 +209,33 @@
   </div>
 
   <script>
+     const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+
+    // Initialize Supabase client
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Check if user is authenticated when loading h2.html
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check if Supabase client is available
+    if (typeof supabase === 'undefined') {
+        // If not, redirect to login
+        window.location.href = 'h1.html';
+        return;
+    }
+    
+    // Get current session
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    if (error || !session) {
+        // No active session, redirect to login
+        window.location.href = 'h1.html';
+        return;
+    }
+    
+    // User is authenticated, continue with the app
+    // Your existing file storage code goes here
+  });
     const openModalBtn = document.getElementById('openModalBtn');
     const createFolderBtn = document.getElementById('createFolderBtn');
     const uploadModal = document.getElementById('uploadModal');

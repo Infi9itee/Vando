@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - ভাণ্ড</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: sans-serif;
+            line-height: 1.9;
+            min-height: 100vh;
+            background: #f3f3f3;
+            flex-direction: column;
+            margin: 0;
+        }
+
+        .main {
+            background-color: #fff;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+            padding: 10px 20px;
+            transition: transform 0.2s;
+            width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #3dbfc9;
+        }
+
+        label {
+            display: block;
+            width: 100%;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            text-align: left;
+            color: #555;
+            font-weight: bold;
+        }
+
+        input {
+            display: block;
+            width: 100%;
+            margin-bottom: 15px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            margin-bottom: 15px;
+            border: none;
+            color: white;
+            cursor: pointer;
+            background-color: #4caf99;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        .wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .login-link {
+            margin-top: 15px;
+            color: #4caf99;
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main">
+        <h1>ভাণ্ড</h1>
+        <h3>Create your account</h3>
+
+        <form id="signup-form">
+            <label for="email">
+                Email:
+            </label>
+            <input type="email" id="email" name="email"
+                   placeholder="Enter your Email" required>
+
+            <label for="password">
+                Password:
+            </label>
+            <input type="password" id="password" name="password"
+                   placeholder="Create a password" required>
+                   
+            <label for="confirm-password">
+                Confirm Password:
+            </label>
+            <input type="password" id="confirm-password" name="confirm-password"
+                   placeholder="Confirm your password" required>
+
+            <div class="wrap">
+                <button type="submit" id="signup-button">
+                    Create Account
+                </button>
+            </div>
+        </form>
+
+        <p id="message"></p>
+        
+        <p>Already have an account?
+            <a href="h1.html" class="login-link">
+                Login here
+            </a>
+        </p>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Paste your Supabase details here
+        const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+
+        // --- INITIALIZE SUPABASE ---
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- GET HTML ELEMENTS ---
+        const signupButton = document.getElementById('signup-button');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirm-password');
+        const messageElement = document.getElementById('message');
+        const signupForm = document.getElementById('signup-form');
+
+        // --- ATTACH EVENT LISTENERS ---
+        signupForm.addEventListener('submit', async (event) => {
+            // prevent the form from submitting normally
+            event.preventDefault(); 
+            
+            const email = emailInput.value.trim();
+            const password = passwordInput.value.trim();
+            const confirmPassword = confirmPasswordInput.value.trim();
+
+            // Validate form
+            if (!email || !password || !confirmPassword) {
+                messageElement.textContent = 'Please fill in all fields.';
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                messageElement.textContent = 'Passwords do not match.';
+                return;
+            }
+
+            if (password.length < 6) {
+                messageElement.textContent = 'Password must be at least 6 characters long.';
+                return;
+            }
+
+            // Call the Supabase signUp function
+            const { data, error } = await _supabase.auth.signUp({
+                email: email,
+                password: password,
+            });
+
+            if (error) {
+                messageElement.textContent = `Error: ${error.message}`;
+            } else {
+                messageElement.textContent = 'Account created successfully! Please check your email for a confirmation link.';
+                // Clear the form after successful signup request
+                signupForm.reset();
+            }
+        });
+    </script>
+</body>
+</html>
