@@ -20,6 +20,19 @@
       box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
       position: relative;
     }
+    
+    .loading-overlay {
+        display: none;
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(255,255,255,0.7);
+        z-index: 100;
+        justify-content: center;
+        align-items: center;
+        font-size: 1.5em;
+        color: #333;
+    }
 
     h1 {
       text-align: center;
@@ -107,8 +120,8 @@
       margin-left: 5px;
     }
     .delete-btn {
-        background: crimson;
-        color: white;
+      background: crimson;
+      color: white;
     }
 
     .rename-btn:hover {
@@ -174,364 +187,417 @@
     .logout-btn:hover {
       background: #b71c1c;
     }
-
   </style>
 </head>
 <body>
-  <div class="container">
-    <button class="logout-btn" id="logoutBtn">Logout</button>
-    <h1>ভাণ্ড - File Storage</h1>
-    <button class="btn" id="openModalBtn">+ Add File</button>
-    <button class="btn" id="createFolderBtn">Create Folder</button>
+  <div class="container">
+    <div class="loading-overlay" id="loadingOverlay"><span>Loading...</span></div>
+    <button class="logout-btn" id="logoutBtn">Logout</button>
+    <h1>ভাণ্ড - File Storage</h1>
+    <button class="btn" id="openModalBtn">+ Add File</button>
+    <button class="btn" id="createFolderBtn">Create Folder</button>
 
-    <div class="section">
-      <div id="root"></div>
-    </div>
-    
-  </div>
+    <div class="section">
+      <div id="root"></div>
+    </div>
+  </div>
 
-  <!-- File Upload Modal -->
-  <div class="modal" id="uploadModal">
-    <div class="modal-content">
-      <span class="close" id="closeModalBtn">×</span>
-      <h3>Upload File</h3>
-      <label for="customName">File Name (optional):</label>
-      <input type="text" id="customName" placeholder="e.g. my_photo">
+    <div class="modal" id="uploadModal">
+    <div class="modal-content">
+      <span class="close" id="closeModalBtn">×</span>
+      <h3>Upload File</h3>
+      <label for="customName">File Name (optional):</label>
+      <input type="text" id="customName" placeholder="e.g. my_photo">
 
-      <label for="fileInput">Select File:</label>
-      <input type="file" id="fileInput" accept=".txt,image/*">
-      
-      <label for="folderSelect">Select Folder:</label>
-      <select id="folderSelect"></select>
+      <label for="fileInput">Select File:</label>
+      <input type="file" id="fileInput" accept=".txt,image/*">
+      
+      <label for="folderSelect">Select Folder:</label>
+      <select id="folderSelect"></select>
 
-      <button class="btn" id="uploadBtn">Upload</button>
-    </div>
-  </div>
+      <button class="btn" id="uploadBtn">Upload</button>
+    </div>
+  </div>
 
-  <script>
-     const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+  <script>
+    const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
 
-    // Initialize Supabase client
-    const { createClient } = supabase;
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // Check if user is authenticated when loading h2.html
-document.addEventListener('DOMContentLoaded', async () => {
-    // Check if Supabase client is available
-    if (typeof supabase === 'undefined') {
-        // If not, redirect to login
-        window.location.href = 'h1.html';
-        return;
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const BUCKET_NAME = 'uploads';
+
+    const openModalBtn = document.getElementById('openModalBtn');
+    const createFolderBtn = document.getElementById('createFolderBtn');
+    const uploadModal = document.getElementById('uploadModal');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const customNameInput = document.getElementById('customName');
+    const folderSelect = document.getElementById('folderSelect');
+    const root = document.getElementById('root');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    let currentUser = null;
+    let fileSystem = {};
+
+    function showLoader(message = 'Loading...') {
+        loadingOverlay.firstElementChild.textContent = message;
+        loadingOverlay.style.display = 'flex';
+    }
+
+    function hideLoader() {
+        loadingOverlay.style.display = 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error || !session) {
+            window.location.href = 'login.html';
+            return;
+        }
+        currentUser = session.user;
+        await refreshFileSystem();
+    });
+
+    async function refreshFileSystem() {
+        showLoader('Fetching files...');
+        try {
+            const { data, error } = await supabaseClient
+                .from('files')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('is_folder', { ascending: false })
+                .order('name', { ascending: true });
+            if (error) throw error;
+            fileSystem = buildFileSystemTree(data);
+            renderFileSystem();
+        } catch (error) {
+            console.error('Error fetching file system:', error);
+            alert('Could not load your files. Please try again.');
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    function buildFileSystemTree(flatList) {
+        const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
+        const nodeMap = { "root": rootNode };
+        flatList.forEach(item => {
+            item.children = item.is_folder ? [] : null;
+            nodeMap[item.path] = item;
+        });
+        flatList.forEach(item => {
+            const parent = nodeMap[item.parent_path];
+            if (parent) parent.children.push(item);
+        });
+        return rootNode;
+    }
+
+    function renderFileSystem() {
+        root.innerHTML = '';
+        fileSystem.children.filter(item => !item.is_folder).forEach(item => {
+            root.appendChild(createItemElement(item));
+        });
+        fileSystem.children.filter(item => item.is_folder).forEach(folder => {
+            root.appendChild(createFolderElement(folder));
+        });
+    }
+
+    function createFolderElement(folder) {
+        const folderEl = document.createElement('div');
+        folderEl.className = 'folder';
+        const title = document.createElement('h3');
+        title.innerHTML = `<span class="folder-icon">📁</span> ${folder.name}`;
+        folderEl.appendChild(title);
+        const actions = createActions(folder);
+        folderEl.appendChild(actions);
+        const content = document.createElement('div');
+        content.className = 'file-content';
+        folder.children.forEach(item => {
+            content.appendChild(item.is_folder ? createFolderElement(item) : createItemElement(item));
+        });
+        folderEl.appendChild(content);
+        return folderEl;
+    }
+    
+    function createItemElement(item) {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'file-item';
+        const title = document.createElement('h3');
+        title.textContent = item.name;
+        itemEl.appendChild(title);
+        const actions = createActions(item);
+        itemEl.appendChild(actions);
+        const storagePath = `${currentUser.id}/${item.path}`;
+        if (item.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+            if (data.publicUrl) {
+                const img = document.createElement('img');
+                img.src = data.publicUrl;
+                itemEl.appendChild(img);
+            }
+        } else if (item.name.match(/\.txt$/i)) {
+            const textarea = document.createElement('textarea');
+            textarea.readOnly = true;
+            textarea.textContent = "Loading content...";
+            itemEl.appendChild(textarea);
+            supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
+                .then(({ data, error }) => {
+                    if (error) throw error;
+                    return data.text();
+                }).then(text => {
+                    textarea.textContent = text;
+                }).catch(err => {
+                    textarea.textContent = "Error loading content.";
+                    console.error('Error downloading text file:', err);
+                });
+        }
+        return itemEl;
+    }
+    
+    function createActions(item) {
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'actions';
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'rename-btn';
+        renameBtn.textContent = 'Rename';
+        renameBtn.onclick = () => renameItem(item);
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteItem(item);
+        actionsDiv.appendChild(renameBtn);
+        actionsDiv.appendChild(deleteBtn);
+        return actionsDiv;
+    }
+
+    openModalBtn.addEventListener('click', () => {
+        updateFolderSelection();
+        uploadModal.style.display = 'flex';
+    });
+    
+    document.getElementById('closeModalBtn').onclick = () => {
+        uploadModal.style.display = 'none';
+        resetInputs();
+    };
+
+    createFolderBtn.addEventListener('click', async () => {
+        const folderName = prompt("Enter folder name (cannot contain '/'):");
+        if (!folderName || folderName.includes('/')) {
+            if (folderName) alert("Folder name cannot contain '/'");
+            return;
+        }
+        const parentPath = 'root';
+        const newPath = `${parentPath}/${folderName}`;
+        showLoader('Creating folder...');
+        try {
+            const { error: insertError } = await supabaseClient.from('files').insert({
+                    user_id: currentUser.id, name: folderName, path: newPath, is_folder: true, parent_path: parentPath
+            });
+            if (insertError) throw insertError;
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Error creating folder:', error);
+            alert('Failed to create folder. A folder with this name may already exist.');
+        } finally {
+            hideLoader();
+        }
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        const customName = customNameInput.value.trim();
+        const parentPath = folderSelect.value;
+        if (!file) {
+            alert('Please select a file.');
+            return;
+        }
+        showLoader('Uploading file...');
+        const ext = file.name.split('.').pop();
+        const finalName = customName ? `${customName}.${ext}` : file.name;
+        const newPath = `${parentPath}/${finalName}`;
+        const storagePath = `${currentUser.id}/${newPath}`;
+        try {
+            const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
+            if (uploadError) throw uploadError;
+            const { error: insertError } = await supabaseClient.from('files').insert({
+                user_id: currentUser.id, name: finalName, path: newPath, is_folder: false, parent_path: parentPath
+            });
+            if (insertError) {
+                await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
+                throw insertError;
+            }
+            uploadModal.style.display = 'none';
+            resetInputs();
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            alert(`Upload failed: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
+    });
+
+    // --- RENAME AND DELETE ---
+
+    async function renameItem(item) {
+        const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
+        const currentName = item.is_folder ? item.name : nameWithoutExt;
+        const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
+        
+        if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
+            if (newNameRaw) alert("Invalid name or name unchanged.");
+            return;
+        }
+
+        showLoader('Renaming...');
+        try {
+            if (item.is_folder) {
+                await renameFolder(item, newNameRaw);
+            } else {
+                await renameFile(item, newNameRaw);
+            }
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Rename failed:', error);
+            alert(`Could not rename item: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function renameFile(item, newNameRaw) {
+        const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
+        const newName = `${newNameRaw}${ext}`;
+
+        const { data: existing, error: checkError } = await supabaseClient
+            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
+        if (checkError && checkError.code !== 'PGRST116') throw checkError; // 'PGRST116' means no rows found, which is good.
+        if (existing) throw new Error('A file with that name already exists in this folder.');
+
+        const newPath = `${item.parent_path}/${newName}`;
+        const oldStoragePath = `${currentUser.id}/${item.path}`;
+        const newStoragePath = `${currentUser.id}/${newPath}`;
+
+        const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
+        if (moveError) throw moveError;
+
+        const { error: updateError } = await supabaseClient
+            .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
+        if (updateError) {
+            // Attempt to roll back the storage move if the database update fails
+            await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
+            throw updateError;
+        }
+    }
+
+    async function renameFolder(item, newName) {
+        const { data: existing, error: checkError } = await supabaseClient
+            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
+        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+        if (existing) throw new Error('A folder with that name already exists here.');
+
+        const oldPath = item.path;
+        const newPath = `${item.parent_path}/${newName}`;
+
+        const { data: descendants, error: fetchError } = await supabaseClient
+            .from('files').select('*').like('path', `${oldPath}/%`);
+        if (fetchError) throw fetchError;
+
+        const filesToMove = descendants.filter(d => !d.is_folder);
+        if (filesToMove.length > 0) {
+            const movePromises = filesToMove.map(file => {
+                const fileNewPath = file.path.replace(oldPath, newPath);
+                return supabaseClient.storage.from(BUCKET_NAME).move(`${currentUser.id}/${file.path}`, `${currentUser.id}/${fileNewPath}`);
+            });
+            const moveResults = await Promise.all(movePromises);
+            const firstMoveError = moveResults.find(res => res.error);
+            if (firstMoveError) {
+                throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}. Renaming process stopped.`);
+            }
+        }
+        
+ const recordsToUpdate = [item, ...descendants].map(record => ({
+        id: record.id,
+        user_id: currentUser.id, // <-- ADD THIS LINE
+        name: record.id === item.id ? newName : record.name,
+        path: record.path.replace(oldPath, newPath),
+        parent_path: record.parent_path.replace(oldPath, newPath),
+    }));
+        
+    const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
+    if (updateError) {
+        throw new Error(`Database update failed after moving files. Data might be inconsistent. Error: ${updateError.message}`);
     }
-    
-    // Get current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    
-    if (error || !session) {
-        // No active session, redirect to login
-        window.location.href = 'h1.html';
-        return;
-    }
-    
-    // User is authenticated, continue with the app
-    // Your existing file storage code goes here
-  });
-    const openModalBtn = document.getElementById('openModalBtn');
-    const createFolderBtn = document.getElementById('createFolderBtn');
-    const uploadModal = document.getElementById('uploadModal');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const fileInput = document.getElementById('fileInput');
-    const customNameInput = document.getElementById('customName');
-    const folderSelect = document.getElementById('folderSelect');
-    const root = document.getElementById('root');
+    }
 
-    let fileSystem = {
-        "type": "folder",
-        "name": "root",
-        "path": "root",
-        "children": []
-    };
+    async function deleteItem(item) {
+        if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
+        showLoader('Deleting...');
+        try {
+            let filesToDeleteFromStorage = [];
+            let recordsToDeleteFromDb = [item.id];
+            if (item.is_folder) {
+                const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
+                if (error) throw error;
+                descendants.forEach(d => {
+                    recordsToDeleteFromDb.push(d.id);
+                    if (!d.is_folder) {
+                        filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
+                    }
+                });
+            } else {
+                filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
+            }
+            if (filesToDeleteFromStorage.length > 0) {
+                 const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
+                if (storageError) console.warn("Could not delete from storage:", storageError.message);
+            }
+            const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
+            if (dbError) throw dbError;
+            await refreshFileSystem();
+        } catch(error) {
+            console.error('Error deleting item:', error);
+            alert(`Could not delete item: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    function updateFolderSelection() {
+        folderSelect.innerHTML = '<option value="root">Root</option>';
+        function addOptions(folder, prefix = '') {
+            folder.children.forEach(item => {
+                if (item.is_folder) {
+                    const option = document.createElement('option');
+                    option.value = item.path;
+                    option.textContent = `${prefix}${item.name}`;
+                    folderSelect.appendChild(option);
+                    addOptions(item, `${prefix}${item.name}/`);
+                }
+            });
+        }
+        addOptions(fileSystem);
+    }
 
-    // Open file upload modal
-    openModalBtn.addEventListener('click', () => {
-      updateFolderSelection();
-      uploadModal.style.display = 'flex';
-    });
-    
-    // Close modal
-    document.getElementById('closeModalBtn').onclick = () => {
-      uploadModal.style.display = 'none';
-      resetInputs();
-    };
+    function resetInputs() {
+        fileInput.value = '';
+        customNameInput.value = '';
+    }
+    
+    logoutBtn.addEventListener('click', async () => {
+        await supabaseClient.auth.signOut();
+        window.location.href = 'login.html';
+    });
+    
+    window.addEventListener('click', (e) => {
+        if (e.target === uploadModal) {
+            uploadModal.style.display = 'none';
+            resetInputs();
+        }
+    });
 
-    createFolderBtn.addEventListener('click', () => {
-        const folderName = prompt("Enter folder name:");
-        if (folderName) {
-            if (isNameTaken(folderName, 'folder', 'root')) {
-                alert("A folder with this name already exists in the root directory.");
-                return;
-            }
-            const newFolder = {
-                type: 'folder',
-                name: folderName,
-                path: `root/${folderName}`,
-                children: []
-            };
-            fileSystem.children.push(newFolder);
-            renderFileSystem();
-        }
-    });
-
-    // Upload logic
-    uploadBtn.addEventListener('click', () => {
-      const file = fileInput.files[0];
-      const customName = customNameInput.value.trim();
-      const selectedFolderPath = folderSelect.value;
-      
-      if (!file) {
-        alert('Please select a file.');
-        return;
-      }
-
-      const ext = file.name.split('.').pop();
-      const finalName = customName ? `${customName}.${ext}` : file.name;
-      
-      if(isNameTaken(finalName, 'file', selectedFolderPath)){
-        alert(`A file with the name "${finalName}" already exists in this folder.`);
-        return;
-      }
-      
-      const newFile = {
-        type: file.type,
-        name: finalName,
-        path: `${selectedFolderPath}/${finalName}`,
-        content: file, 
-      };
-
-      let parentFolder = findFolder(selectedFolderPath);
-      if(parentFolder){
-        parentFolder.children.push(newFile);
-      } else {
-        fileSystem.children.push(newFile);
-      }
-
-      renderFileSystem();
-      uploadModal.style.display = 'none';
-      resetInputs();
-    });
-
-    function renderFileSystem() {
-        root.innerHTML = '';
-        
-        // Render root files first
-        fileSystem.children.filter(item => !item.children).forEach(item => {
-            root.appendChild(createItemElement(item));
-        });
-
-        // Then render folders
-        fileSystem.children.filter(item => item.children).forEach(folder => {
-            root.appendChild(createFolderElement(folder));
-        });
-    }
-
-    function createFolderElement(folder) {
-        const folderEl = document.createElement('div');
-        folderEl.className = 'folder';
-        folderEl.dataset.path = folder.path;
-
-        const title = document.createElement('h3');
-        title.innerHTML = `<span class="folder-icon">📁</span> ${folder.name}`;
-        folderEl.appendChild(title);
-
-        const actions = createActions(folder);
-        folderEl.appendChild(actions);
-
-        const content = document.createElement('div');
-        content.className = 'file-content';
-        folder.children.forEach(item => {
-            content.appendChild(createItemElement(item, true));
-        });
-        folderEl.appendChild(content);
-
-        return folderEl;
-    }
-    
-    function createItemElement(item, isChild = false) {
-      const itemEl = document.createElement('div');
-      itemEl.className = 'file-item';
-      itemEl.dataset.path = item.path;
-
-      const title = document.createElement('h3');
-      title.textContent = item.name;
-      itemEl.appendChild(title);
-      
-      const actions = createActions(item, isChild);
-      itemEl.appendChild(actions);
-
-      if (item.type.startsWith('image/')) {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(item.content);
-        itemEl.appendChild(img);
-      } else if (item.type === 'text/plain') {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const textarea = document.createElement('textarea');
-          textarea.readOnly = true;
-          textarea.textContent = e.target.result;
-          itemEl.appendChild(textarea);
-        };
-        reader.readAsText(item.content);
-      }
-      return itemEl;
-    }
-    
-    function createActions(item, isChild = false){
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'actions';
-
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'rename-btn';
-        renameBtn.textContent = 'Rename';
-        renameBtn.onclick = () => renameItem(item.path);
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-btn';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.onclick = () => deleteItem(item.path);
-
-        actionsDiv.appendChild(renameBtn);
-        actionsDiv.appendChild(deleteBtn);
-        return actionsDiv;
-    }
-    
-    function renameItem(path) {
-        const newName = prompt("Enter new name:");
-        if (!newName) return;
-
-        const item = findItem(path);
-        const parentPath = path.substring(0, path.lastIndexOf('/'));
-        
-        let newPath;
-        const isFolder = !!item.children;
-        const type = isFolder ? 'folder' : 'file';
-        
-        if (isFolder) {
-            if (isNameTaken(newName, 'folder', parentPath)) {
-                alert(`A folder named "${newName}" already exists.`);
-                return;
-            }
-            newPath = `${parentPath}/${newName}`;
-        } else {
-            const ext = item.name.split('.').pop();
-            const finalNewName = `${newName}.${ext}`;
-            if (isNameTaken(finalNewName, 'file', parentPath)) {
-                alert(`A file named "${finalNewName}" already exists.`);
-                return;
-            }
-            newPath = `${parentPath}/${finalNewName}`;
-            item.name = finalNewName;
-        }
-
-        if(!isFolder) item.name = `${newName}.${item.name.split('.').pop()}`;
-        else item.name = newName;
-        
-        item.path = newPath;
-        
-        if(item.children){ // If it's a folder, update children paths
-            updateChildrenPaths(item, newPath);
-        }
-
-        renderFileSystem();
-    }
-    
-    function updateChildrenPaths(folder, newParentPath){
-        folder.children.forEach(child => {
-            child.path = `${newParentPath}/${child.name}`;
-            if(child.children){
-                updateChildrenPaths(child, child.path);
-            }
-        });
-    }
-
-    function deleteItem(path) {
-        if (!confirm("Are you sure you want to delete this item?")) return;
-
-        const parentPath = path.substring(0, path.lastIndexOf('/'));
-        const parent = findFolder(parentPath);
-        
-        if (parent) {
-            parent.children = parent.children.filter(child => child.path !== path);
-        }
-        renderFileSystem();
-    }
-    
-    function findItem(path, current = fileSystem) {
-        if (current.path === path) return current;
-        if (!current.children) return null;
-
-        for (const child of current.children) {
-            const found = findItem(path, child);
-            if (found) return found;
-        }
-        return null;
-    }
-
-    function findFolder(path, current = fileSystem) {
-        if (current.path === path && current.type === 'folder') return current;
-        if (!current.children) return null;
-
-        for (const child of current.children) {
-            const found = findFolder(path, child);
-            if (found) return found;
-        }
-        return null;
-    }
-
-    function isNameTaken(name, type, parentPath) {
-        const parent = findFolder(parentPath);
-        if (!parent) return false;
-        
-        return parent.children.some(child => {
-            if(type === 'folder') return child.name === name && !!child.children;
-            return child.name === name && !child.children;
-        });
-    }
-    
-    function updateFolderSelection() {
-        folderSelect.innerHTML = '<option value="root">Root</option>';
-        addFolderOptions(fileSystem);
-    }
-    
-    function addFolderOptions(folder, prefix = '') {
-        folder.children.forEach(item => {
-            if (item.children) {
-                const option = document.createElement('option');
-                option.value = item.path;
-                option.textContent = `${prefix}${item.name}`;
-                folderSelect.appendChild(option);
-                addFolderOptions(item, `${prefix}${item.name}/`);
-            }
-        });
-    }
-
-    function resetInputs() {
-      fileInput.value = '';
-      customNameInput.value = '';
-    }
-
-    const logoutBtn = document.getElementById('logoutBtn');
-    logoutBtn.addEventListener('click', () => {
-        window.location.href = 'h1.html';
-    });
-    
-    window.addEventListener('click', (e) => {
-      if (e.target === uploadModal) {
-        uploadModal.style.display = 'none';
-        resetInputs();
-      }
-    });
-
-    renderFileSystem();
-  </script>
+  </script>
 </body>
 </html>

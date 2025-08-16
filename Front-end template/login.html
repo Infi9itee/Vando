@@ -13,10 +13,10 @@
 
         <form id="login-form">
             <label for="first">
-                Username:
+                Email:
             </label>
             <input type="text" id="first" name="first" 
-                placeholder="Enter your Username" required>
+                placeholder="Enter your Email" required>
 
             <label for="password">
                 Password:
@@ -79,7 +79,7 @@
                     // Store user data in localStorage
                     localStorage.setItem('user', JSON.stringify(data.user));
                     // Redirect to the file storage page
-                    window.location.href = "h2.html";
+                    window.location.href = "dashboard.html";
                 }
             } catch (err) {
                 messageElement.textContent = `Network error: ${err.message}`;
