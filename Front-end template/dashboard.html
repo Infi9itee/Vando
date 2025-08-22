@@ -26,17 +26,20 @@
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.8);
       z-index: 100;
       justify-content: center;
       align-items: center;
       font-size: 1.5em;
       color: #333;
+      text-align: center;
     }
 
     h1 {
       text-align: center;
       margin-bottom: 20px;
+      font-style: italic;
+      color: #555;
     }
 
     .btn {
@@ -56,7 +59,6 @@
       background: #1b4f72;
     }
     
-    /* Style for the new Back button */
     #backBtn {
         background-color: #6c757d;
     }
@@ -203,7 +205,6 @@
       background: #b71c1c;
     }
     
-    /* Navigation Bar Styles */
     #navigation-bar {
         background: #e9ecef;
         padding: 10px 15px;
@@ -228,19 +229,37 @@
         color: #343a40;
     }
 
+    .drop-zone {
+        border: 2px dashed #ccc;
+        border-radius: 10px;
+        padding: 40px;
+        text-align: center;
+        color: #aaa;
+        margin-bottom: 20px;
+        transition: background-color 0.2s, border-color 0.2s;
+    }
+    .drop-zone.dragover {
+        background-color: #f0f8ff;
+        border-color: #2e86de;
+    }
+
   </style>
 </head>
 <body>
   <div class="container">
     <div class="loading-overlay" id="loadingOverlay"><span>Loading...</span></div>
     <button class="logout-btn" id="logoutBtn">Logout</button>
-    <h1>ভাণ্ড - File Storage</h1>
+    <h1 id="page-title"></h1>
     
     <div id="navigation-bar"></div>
 
     <button class="btn" id="backBtn"> Back</button>
-    <button class="btn" id="openModalBtn">+ Add File</button>
+    <button class="btn" id="openModalBtn">+ Add Files</button>
     <button class="btn" id="createFolderBtn">Create Folder</button>
+    
+    <div id="dropZone" class="drop-zone">
+        <p>Drag & Drop files here to upload to the current folder</p>
+    </div>
 
     <div class="section">
       <div id="root"></div>
@@ -250,12 +269,10 @@
     <div class="modal" id="uploadModal">
     <div class="modal-content">
       <span class="close" id="closeModalBtn">×</span>
-      <h3>Upload File</h3>
-      <label for="customName">File Name (optional):</label>
-      <input type="text" id="customName" placeholder="e.g. my_photo">
+      <h3>Upload Files</h3>
 
-      <label for="fileInput">Select File:</label>
-      <input type="file" id="fileInput" accept=".txt,image/*">
+      <label for="fileInput">Select File(s):</label>
+      <input type="file" id="fileInput" accept=".txt,image/*" multiple>
       
       <label for="folderSelect">Select Folder:</label>
       <select id="folderSelect"></select>
@@ -272,18 +289,17 @@
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const BUCKET_NAME = 'uploads';
 
-    // NEW: Get the back button element
     const backBtn = document.getElementById('backBtn');
     const openModalBtn = document.getElementById('openModalBtn');
     const createFolderBtn = document.getElementById('createFolderBtn');
     const uploadModal = document.getElementById('uploadModal');
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
-    const customNameInput = document.getElementById('customName');
     const folderSelect = document.getElementById('folderSelect');
     const root = document.getElementById('root');
     const logoutBtn = document.getElementById('logoutBtn');
     const loadingOverlay = document.getElementById('loadingOverlay');
+    const dropZone = document.getElementById('dropZone');
 
     let currentUser = null;
     let fileSystem = {};
@@ -299,6 +315,25 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+        // --- NEW: Random Quote Generator ---
+        const pageTitle = document.getElementById('page-title');
+        const quotes = [
+            "\"Less is more.\"",
+            "\"Stay hungry, stay foolish.\"",
+            "\"What you seek is seeking you.\"",
+            "\"Be consistent in not being inconsistent.\"",
+            "\"Be yourself; everyone else is already taken.\"",
+            "\"Happiness depends upon ourselves.\"",
+            "\"Act, don’t react.\"",
+            "\"The obstacle is the way.\"",
+            "\"Dream big. Start small.\"",
+            "\"Simplicity is the ultimate sophistication.\"",
+            "\"Do it scared.\""
+        ];
+        const randomIndex = Math.floor(Math.random() * quotes.length);
+        pageTitle.textContent = quotes[randomIndex];
+        // --- End of New Code ---
+
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         if (error || !session) {
             window.location.href = 'login.html';
@@ -365,7 +400,6 @@
     }
 
     function renderCurrentView() {
-        // NEW: Manage back button visibility
         if (currentPath === 'root') {
             backBtn.style.display = 'none';
         } else {
@@ -491,13 +525,12 @@
         return actionsDiv;
     }
     
-    // NEW: Add event listener for the back button
-    backBtn.addEventListener('click', () => {
-        if (currentPath === 'root') return; // Should not happen if button is hidden, but good practice
+    // --- EVENT LISTENERS ---
 
+    backBtn.addEventListener('click', () => {
+        if (currentPath === 'root') return;
         const lastSlashIndex = currentPath.lastIndexOf('/');
         const parentPath = currentPath.substring(0, lastSlashIndex);
-        
         navigateTo(parentPath);
     });
 
@@ -537,41 +570,93 @@
         }
     });
 
-    uploadBtn.addEventListener('click', async () => {
-        const file = fileInput.files[0];
-        const customName = customNameInput.value.trim();
-        const parentPath = folderSelect.value;
-        if (!file) {
-            alert('Please select a file.');
+    // --- UPLOAD LOGIC FOR BULK/DRAG-DROP ---
+
+    async function uploadFiles(files, parentPath) {
+        if (!files || files.length === 0) {
+            alert('No files to upload.');
             return;
         }
-        showLoader('Uploading file...');
-        const ext = file.name.split('.').pop();
-        const finalName = customName ? `${customName}.${ext}` : file.name;
-        const newPath = `${parentPath}/${finalName}`;
-        const storagePath = `${currentUser.id}/${newPath}`;
-        try {
-            const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
-            if (uploadError) throw uploadError;
-            const { error: insertError } = await supabaseClient.from('files').insert({
-                user_id: currentUser.id, name: finalName, path: newPath, is_folder: false, parent_path: parentPath
-            });
-            if (insertError) {
-                await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
-                throw insertError;
+        
+        showLoader(`Preparing to upload ${files.length} files...`);
+        let successCount = 0;
+        let errorCount = 0;
+        const totalFiles = files.length;
+
+        for (let i = 0; i < totalFiles; i++) {
+            const file = files[i];
+            const finalName = file.name;
+            showLoader(`Uploading ${i + 1}/${totalFiles}: ${finalName}`);
+
+            const newPath = `${parentPath}/${finalName}`;
+            const storagePath = `${currentUser.id}/${newPath}`;
+
+            try {
+                const { data: existing, error: checkError } = await supabaseClient
+                    .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
+                if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                if (existing) throw new Error(`An item named "${finalName}" already exists.`);
+                
+                const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
+                if (uploadError) throw uploadError;
+
+                const { error: insertError } = await supabaseClient.from('files').insert({
+                    user_id: currentUser.id, name: finalName, path: newPath, is_folder: false, parent_path: parentPath
+                });
+
+                if (insertError) {
+                    await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]); // Rollback
+                    throw insertError;
+                }
+                successCount++;
+            } catch (error) {
+                console.error(`Failed to upload ${finalName}:`, error);
+                errorCount++;
             }
-            uploadModal.style.display = 'none';
-            resetInputs();
-            await refreshFileSystem();
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            alert(`Upload failed: ${error.message}`);
-        } finally {
-            hideLoader();
         }
+
+        uploadModal.style.display = 'none';
+        resetInputs();
+        await refreshFileSystem();
+
+        let summaryMessage = `${successCount} of ${totalFiles} file(s) uploaded successfully.`;
+        if (errorCount > 0) {
+            summaryMessage += `\n${errorCount} file(s) failed. Check the console for details.`;
+        }
+        alert(summaryMessage);
+        hideLoader();
+    }
+
+    uploadBtn.addEventListener('click', () => {
+        const files = fileInput.files;
+        if (!files.length) {
+            alert('Please select one or more files.');
+            return;
+        }
+        uploadFiles(files, folderSelect.value);
     });
 
-    // --- RENAME AND DELETE (Unchanged logic) ---
+    // --- Drag and Drop Event Listeners ---
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        uploadFiles(files, currentPath);
+    }, false);
+
+
+    // --- RENAME AND DELETE ---
 
     async function renameItem(item) {
         const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
@@ -716,7 +801,6 @@
 
     function resetInputs() {
         fileInput.value = '';
-        customNameInput.value = '';
     }
     
     logoutBtn.addEventListener('click', async () => {
@@ -730,7 +814,7 @@
             resetInputs();
         }
     });
- // 
+ 
   </script>
 </body>
 </html>
