@@ -299,20 +299,6 @@
             text-align: center;
             margin-top: 40%;
         }
-        .workspace-selector {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          margin-bottom: 10px;
-        }
-        #workspaceSelect {
-          flex: 1;
-          min-width: 180px;
-        }
-        #inviteMemberBtn {
-          padding: 6px 12px;
-        }
         .drop-zone {
             border: 2px dashed #ccc;
             border-radius: 10px;
@@ -450,15 +436,7 @@
         </div>
         <!-- Add to HTML -->
         <div class="controls">
-          <div class="workspace-selector">
-            <label for="workspaceSelect">Workspace:</label>
-            <select id="workspaceSelect" style="padding: 8px; border-radius: 4px;">
-              <option value="">Personal Space</option>
-            </select>
-            <button id="createWorkspaceBtn" style="margin-left: 10px;">+ New</button>
-            <button id="inviteMemberBtn" disabled style="margin-left: 10px;">👥 Invite</button>
-          </div>
-        </div>
+
         <div id="navigation-bar"></div>
         <div class="storage-meter-container">
             <h2>Storage Usage</h2>
@@ -542,8 +520,7 @@
         const previewContent = document.getElementById('previewContent');
         
         let currentUser = null;
-        let currentWorkspace = null; // null = personal space
-        const workspaces = [];
+
         let fileSystem = {};
         let currentPath = 'root';
         let selectedFile = null;
@@ -606,74 +583,7 @@
             usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
             usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
         }
-        async function loadWorkspaces() {
-          const { data, error } = await supabaseClient
-            .from('workspaces')
-            .select(`
-              id,
-              name,
-              owner_id,
-              workspace_members (
-                user_id,
-                email,
-                role,
-                accepted
-              )
-            `)
-            .or(`owner_id.eq.${currentUser.id},workspace_members.user_id.eq.${currentUser.id}`)
-            .eq('workspace_members.accepted', true);
-                
-          if (error) {
-            console.error("Failed to load workspaces:", error);
-            return;
-          }
-      
-          const select = document.getElementById('workspaceSelect');
-          select.innerHTML = '<option value="">Personal Space</option>';
-      
-          data.forEach(ws => {
-            const option = document.createElement('option');
-            option.value = ws.id;
-            option.textContent = ws.name;
-            select.appendChild(option);
-          });
-      
-          workspaces.push(...data);
-        }
-        async function loadWorkspaces() {
-         const { data, error } = await supabaseClient
-           .from('workspaces')
-           .select(`
-             id,
-             name,
-             owner_id,
-             workspace_members (
-               user_id,
-               email,
-               role,
-               accepted
-             )
-           `)
-           .or(`owner_id.eq.${currentUser.id},workspace_members.user_id.eq.${currentUser.id}`)
-           .eq('workspace_members.accepted', true);
-                
-         if (error) {
-           console.error("Failed to load workspaces:", error);
-           return;
-         }
-     
-         const select = document.getElementById('workspaceSelect');
-         select.innerHTML = '<option value="">Personal Space</option>';
-     
-         data.forEach(ws => {
-           const option = document.createElement('option');
-           option.value = ws.id;
-           option.textContent = ws.name;
-           select.appendChild(option);
-         });
-     
-         workspaces.push(...data);
-        }
+
         async function refreshFileSystem() {
             showLoader('Fetching files...');
             try {
