@@ -12,7 +12,41 @@
             padding: 40px;
             margin: 0;
         }
-
+        /* Thumbnail Styles */
+        .thumbnail {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+        .thumbnail-placeholder {
+            width: 60px;
+            height: 60px;
+            background: #e0e0e0;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 12px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .file-preview-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .file-preview-container h3 {
+            margin: 0;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .container {
             max-width: 1200px;
             margin: auto;
@@ -169,12 +203,15 @@
         .folder,
         .file-item {
             background: #f9f9f9;
-            padding: 12px;
+            padding: 10px;
             margin: 8px 0;
             border-radius: 8px;
             cursor: pointer;
             border: 1px solid #eee;
             position: relative;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .folder:hover,
@@ -199,6 +236,24 @@
 
         .folder-icon {
             margin-right: 8px;
+        }
+
+        /* Double-click hint */
+        .folder::after,
+        .file-item::after {
+            content: 'Double-click to open';
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 10px;
+            color: #888;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .folder:hover::after,
+        .file-item:hover::after {
+            opacity: 0.7;
         }
 
         /* Preview Styles */
@@ -244,7 +299,20 @@
             text-align: center;
             margin-top: 40%;
         }
-
+        .workspace-selector {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          margin-bottom: 10px;
+        }
+        #workspaceSelect {
+          flex: 1;
+          min-width: 180px;
+        }
+        #inviteMemberBtn {
+          padding: 6px 12px;
+        }
         .drop-zone {
             border: 2px dashed #ccc;
             border-radius: 10px;
@@ -380,6 +448,17 @@
             <h1 id="page-title"></h1>
             <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
+        <!-- Add to HTML -->
+        <div class="controls">
+          <div class="workspace-selector">
+            <label for="workspaceSelect">Workspace:</label>
+            <select id="workspaceSelect" style="padding: 8px; border-radius: 4px;">
+              <option value="">Personal Space</option>
+            </select>
+            <button id="createWorkspaceBtn" style="margin-left: 10px;">+ New</button>
+            <button id="inviteMemberBtn" disabled style="margin-left: 10px;">👥 Invite</button>
+          </div>
+        </div>
         <div id="navigation-bar"></div>
         <div class="storage-meter-container">
             <h2>Storage Usage</h2>
@@ -404,7 +483,10 @@
                             <option value="all">All Files</option>
                             <option value="folders">Folders</option>
                             <option value="images">Images</option>
-                            <option value="documents">Documents</option>
+                            <option value="documents">Documents (.txt, .pdf, .md)</option>
+                            <option value="videos">Videos</option>
+                            <option value="audio">Audio</option>
+                            <option value="archives">Archives</option>
                         </select>
                     </div>
                 </div>
@@ -428,7 +510,7 @@
             <span class="close" id="closeModalBtn">×</span>
             <h3>Upload Files</h3>
             <label for="fileInput">Select File(s):</label>
-            <input type="file" id="fileInput" accept=".txt,image/*" multiple />
+            <input type="file" id="fileInput" accept="*" multiple />
             <label for="folderSelect">Select Folder:</label>
             <select id="folderSelect"></select>
             <button class="btn" id="uploadBtn">Upload</button>
@@ -440,7 +522,6 @@
         const { createClient } = supabase;
         const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const BUCKET_NAME = 'uploads';
-
         // DOM Elements
         const backBtn = document.getElementById('backBtn');
         const openModalBtn = document.getElementById('openModalBtn');
@@ -455,16 +536,19 @@
         const dropZone = document.getElementById('dropZone');
         const searchInput = document.getElementById('searchInput');
         const filterSelect = document.getElementById('filterSelect');
-
+        
         // Preview Elements
         const previewHeader = document.getElementById('previewHeader');
         const previewContent = document.getElementById('previewContent');
-
+        
         let currentUser = null;
+        let currentWorkspace = null; // null = personal space
+        const workspaces = [];
         let fileSystem = {};
         let currentPath = 'root';
         let selectedFile = null;
         let allFiles = []; // For universal search
+        let isNavigatingFromHistory = false; // Flag to prevent duplicate history entries
 
         function showLoader(message = 'Loading...') {
             loadingOverlay.firstElementChild.textContent = message;
@@ -480,7 +564,7 @@
             const quotes = [
                 "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
                 "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
-                "\"Happiness depends upon ourselves.\"", "\"Act, don’t react.\"", "\"The obstacle is the way.\"",
+                "\"Happiness depends upon ourselves.\"", "\"Act, don't react.\"", "\"The obstacle is the way.\"",
                 "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
             ];
             const randomIndex = Math.floor(Math.random() * quotes.length);
@@ -492,6 +576,10 @@
                 return;
             }
             currentUser = session.user;
+            
+            // Initialize browser history
+            initializeBrowserHistory();
+            
             await refreshFileSystem();
         });
 
@@ -518,7 +606,74 @@
             usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
             usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
         }
-
+        async function loadWorkspaces() {
+          const { data, error } = await supabaseClient
+            .from('workspaces')
+            .select(`
+              id,
+              name,
+              owner_id,
+              workspace_members (
+                user_id,
+                email,
+                role,
+                accepted
+              )
+            `)
+            .or(`owner_id.eq.${currentUser.id},workspace_members.user_id.eq.${currentUser.id}`)
+            .eq('workspace_members.accepted', true);
+                
+          if (error) {
+            console.error("Failed to load workspaces:", error);
+            return;
+          }
+      
+          const select = document.getElementById('workspaceSelect');
+          select.innerHTML = '<option value="">Personal Space</option>';
+      
+          data.forEach(ws => {
+            const option = document.createElement('option');
+            option.value = ws.id;
+            option.textContent = ws.name;
+            select.appendChild(option);
+          });
+      
+          workspaces.push(...data);
+        }
+        async function loadWorkspaces() {
+         const { data, error } = await supabaseClient
+           .from('workspaces')
+           .select(`
+             id,
+             name,
+             owner_id,
+             workspace_members (
+               user_id,
+               email,
+               role,
+               accepted
+             )
+           `)
+           .or(`owner_id.eq.${currentUser.id},workspace_members.user_id.eq.${currentUser.id}`)
+           .eq('workspace_members.accepted', true);
+                
+         if (error) {
+           console.error("Failed to load workspaces:", error);
+           return;
+         }
+     
+         const select = document.getElementById('workspaceSelect');
+         select.innerHTML = '<option value="">Personal Space</option>';
+     
+         data.forEach(ws => {
+           const option = document.createElement('option');
+           option.value = ws.id;
+           option.textContent = ws.name;
+           select.appendChild(option);
+         });
+     
+         workspaces.push(...data);
+        }
         async function refreshFileSystem() {
             showLoader('Fetching files...');
             try {
@@ -532,7 +687,13 @@
                 allFiles = data;
                 updateUsageMeter(data);
                 fileSystem = buildFileSystemTree(data);
-                navigateTo(currentPath); // Re-render current view
+                
+                // Verify current path still exists, if not go to root
+                if (currentPath !== 'root' && !findNodeByPath(currentPath, fileSystem)) {
+                    navigateTo('root');
+                } else {
+                    navigateTo(currentPath); // Re-render current view
+                }
             } catch (error) {
                 console.error('Error fetching file system:', error);
                 alert('Could not load your files.');
@@ -568,9 +729,43 @@
             return currentNode;
         }
 
+        // Browser History Management
+        function initializeBrowserHistory() {
+            // Get initial path from URL or default to root
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialPath = urlParams.get('path') || 'root';
+            currentPath = initialPath;
+            
+            // Set initial state
+            const initialState = { path: currentPath, page: 'fileStorage' };
+            history.replaceState(initialState, '', `?path=${encodeURIComponent(currentPath)}`);
+            
+            // Listen for browser back/forward events
+            window.addEventListener('popstate', (event) => {
+                if (event.state && event.state.page === 'fileStorage') {
+                    isNavigatingFromHistory = true;
+                    navigateTo(event.state.path);
+                } else {
+                    // If no valid state, go to login
+                    window.location.href = 'login.html';
+                }
+            });
+        }
+
         function navigateTo(path) {
+            const oldPath = currentPath;
             currentPath = path;
             selectedFile = null;
+            
+            // Update browser history (only if not navigating from history)
+            if (!isNavigatingFromHistory) {
+                const state = { path: currentPath, page: 'fileStorage' };
+                const url = `?path=${encodeURIComponent(currentPath)}`;
+                history.pushState(state, '', url);
+            } else {
+                isNavigatingFromHistory = false; // Reset flag
+            }
+            
             renderView();
             backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
         }
@@ -632,6 +827,15 @@
                     case 'documents':
                         filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name));
                         break;
+                    case 'videos':
+                        filtered = filtered.filter(item => !item.is_folder && /\.(mp4|webm|ogg)$/i.test(item.name));
+                        break;
+                    case 'audio':
+                        filtered = filtered.filter(item => !item.is_folder && /\.(mp3|wav|ogg)$/i.test(item.name));
+                        break;
+                    case 'archives':
+                        filtered = filtered.filter(item => !item.is_folder && /\.(zip|rar|7z|tar|gz)$/i.test(item.name));
+                        break;
                 }
             }
 
@@ -647,6 +851,7 @@
 
             if (isSearching) {
                 // Show universal search results
+                // Show universal search results
                 const results = getFilteredFilesForSearch();
                 fileList.innerHTML = '';
                 if (results.length === 0) {
@@ -654,15 +859,102 @@
                     return;
                 }
                 results.forEach(item => {
-                    const el = document.createElement('div');
-                    el.className = item.is_folder ? 'folder' : 'file-item';
+                    // Create container (replaces old 'el')
+                    const container = document.createElement('div');
+                    container.className = item.is_folder ? 'folder' : 'file-item';
+                    container.dataset.path = item.path;
+                
+                    // Preview container with thumbnail
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'file-preview-container';
+                
+                    // Thumbnail element
+                    const thumbnail = document.createElement('div');
+                    const fileName = item.name.toLowerCase();
+                
+                    if (item.is_folder) {
+                        const icon = document.createElement('span');
+                        icon.className = 'folder-icon';
+                        icon.textContent = '📁';
+                        thumbnail.appendChild(icon);
+                    } 
+                    // Image Files
+                    else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
+                        const img = document.createElement('img');
+                        img.className = 'thumbnail';
+                        img.alt = item.name;
+                        img.loading = "lazy";
+                    
+                        const storagePath = `${currentUser.id}/${item.path}`;
+                        const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                        if (data?.publicUrl) {
+                            img.src = data.publicUrl;
+                            if (fileName.endsWith('.gif')) {
+                                img.style.border = "2px solid #ff6600"; // highlight GIFs
+                            }
+                        } else {
+                            img.src = 'https://via.placeholder.com/60?text=img';
+                        }
+                        img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
+                        thumbnail.appendChild(img);
+                    }
+                    // Video Files
+                    else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
+                        const videoThumb = document.createElement('div');
+                        videoThumb.className = 'thumbnail-placeholder';
+                        videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
+                        thumbnail.appendChild(videoThumb);
+                    }
+                    // PDF
+                    else if (fileName.endsWith('.pdf')) {
+                        const pdfThumb = document.createElement('div');
+                        pdfThumb.className = 'thumbnail-placeholder';
+                        pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
+                        thumbnail.appendChild(pdfThumb);
+                    }
+                    // Audio
+                    else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
+                        const audioThumb = document.createElement('div');
+                        audioThumb.className = 'thumbnail-placeholder';
+                        audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
+                        thumbnail.appendChild(audioThumb);
+                    }
+                    // Archives
+                    else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
+                        const archiveThumb = document.createElement('div');
+                        archiveThumb.className = 'thumbnail-placeholder';
+                        archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
+                        thumbnail.appendChild(archiveThumb);
+                    }
+                    // Text / Code
+                    else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
+                        const textThumb = document.createElement('div');
+                        textThumb.className = 'thumbnail-placeholder';
+                        textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
+                        thumbnail.appendChild(textThumb);
+                    }
+                    // Fallback
+                    else {
+                        const fallbackThumb = document.createElement('div');
+                        fallbackThumb.className = 'thumbnail-placeholder';
+                        fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
+                        thumbnail.appendChild(fallbackThumb);
+                    }
+                
+                    previewContainer.appendChild(thumbnail);
+                
+                    // File name
                     const content = document.createElement('h3');
-                    content.innerHTML = `<span class="folder-icon">${item.is_folder ? '📁' : '📄'}</span> ${item.name}`;
-                    el.appendChild(content);
-
+                    content.textContent = item.name;
+                    previewContainer.appendChild(content);
+                
+                    // Append preview container
+                    container.appendChild(previewContainer);
+                
                     // Actions
                     const actions = document.createElement('div');
                     actions.className = 'actions';
+                
                     const renameBtn = document.createElement('button');
                     renameBtn.className = 'rename-btn';
                     renameBtn.textContent = 'Rename';
@@ -670,6 +962,7 @@
                         e.stopPropagation();
                         renameItem(item);
                     };
+                
                     const deleteBtn = document.createElement('button');
                     deleteBtn.className = 'delete-btn';
                     deleteBtn.textContent = 'Delete';
@@ -677,25 +970,38 @@
                         e.stopPropagation();
                         deleteItem(item);
                     };
+                
                     actions.appendChild(renameBtn);
                     actions.appendChild(deleteBtn);
-                    el.appendChild(actions);
-
-                    // Click handler: navigate to parent folder and select item
-                    el.onclick = (e) => {
+                    container.appendChild(actions);
+                
+                    // Click to select
+                    container.onclick = (e) => {
                         if (e.target === renameBtn || e.target === deleteBtn) return;
-                        // Navigate to the parent folder of the found item
-                        navigateTo(item.parent_path);
-                        // Select the item
                         selectedFile = item;
                         document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
                             el.classList.remove('selected')
                         );
-                        el.classList.add('selected');
+                        container.classList.add('selected');
                         renderPreview();
                     };
-
-                    fileList.appendChild(el);
+                
+                    // Double-click to open
+                    container.ondblclick = (e) => {
+                        if (e.target === renameBtn || e.target === deleteBtn) return;
+                        if (item.is_folder) {
+                            navigateTo(item.path);
+                        } else {
+                            const storagePath = `${currentUser.id}/${item.path}`;
+                            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                            if (data?.publicUrl) {
+                                window.open(data.publicUrl, '_blank');
+                            }
+                        }
+                    };
+                
+                    // ✅ Append the correct element (container with thumbnail)
+                    fileList.appendChild(container);
                 });
             } else {
                 // Normal mode: show only current folder's contents
@@ -711,15 +1017,89 @@
                     return;
                 }
                 items.forEach(item => {
-                    const el = document.createElement('div');
-                    el.className = item.is_folder ? 'folder' : 'file-item';
+                    const container = document.createElement('div');
+                    container.className = item.is_folder ? 'folder' : 'file-item';
+                    container.dataset.path = item.path;
+                
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'file-preview-container';
+                
+                    const thumbnail = document.createElement('div');
+                    const fileName = item.name.toLowerCase();
+                
+                    if (item.is_folder) {
+                        const icon = document.createElement('span');
+                        icon.className = 'folder-icon';
+                        icon.textContent = '📁';
+                        thumbnail.appendChild(icon);
+                    } 
+                    else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
+                        const img = document.createElement('img');
+                        img.className = 'thumbnail';
+                        img.alt = item.name;
+                        img.loading = "lazy";
+                        const storagePath = `${currentUser.id}/${item.path}`;
+                        const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                        if (data?.publicUrl) {
+                            img.src = data.publicUrl;
+                            if (fileName.endsWith('.gif')) {
+                                img.style.border = "2px solid #ff6600";
+                            }
+                        } else {
+                            img.src = 'https://via.placeholder.com/60?text=img';
+                        }
+                        img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
+                        thumbnail.appendChild(img);
+                    }
+                    else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
+                        const videoThumb = document.createElement('div');
+                        videoThumb.className = 'thumbnail-placeholder';
+                        videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
+                        thumbnail.appendChild(videoThumb);
+                    }
+                    else if (fileName.endsWith('.pdf')) {
+                        const pdfThumb = document.createElement('div');
+                        pdfThumb.className = 'thumbnail-placeholder';
+                        pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
+                        thumbnail.appendChild(pdfThumb);
+                    }
+                    else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
+                        const audioThumb = document.createElement('div');
+                        audioThumb.className = 'thumbnail-placeholder';
+                        audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
+                        thumbnail.appendChild(audioThumb);
+                    }
+                    else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
+                        const archiveThumb = document.createElement('div');
+                        archiveThumb.className = 'thumbnail-placeholder';
+                        archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
+                        thumbnail.appendChild(archiveThumb);
+                    }
+                    else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
+                        const textThumb = document.createElement('div');
+                        textThumb.className = 'thumbnail-placeholder';
+                        textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
+                        thumbnail.appendChild(textThumb);
+                    }
+                    else {
+                        const fallbackThumb = document.createElement('div');
+                        fallbackThumb.className = 'thumbnail-placeholder';
+                        fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
+                        thumbnail.appendChild(fallbackThumb);
+                    }
+                
+                    previewContainer.appendChild(thumbnail);
+                
                     const content = document.createElement('h3');
-                    content.innerHTML = `<span class="folder-icon">${item.is_folder ? '📁' : '📄'}</span> ${item.name}`;
-                    el.appendChild(content);
-
+                    content.textContent = item.name;
+                    previewContainer.appendChild(content);
+                
+                    container.appendChild(previewContainer);
+                
                     // Actions
                     const actions = document.createElement('div');
                     actions.className = 'actions';
+                
                     const renameBtn = document.createElement('button');
                     renameBtn.className = 'rename-btn';
                     renameBtn.textContent = 'Rename';
@@ -727,6 +1107,7 @@
                         e.stopPropagation();
                         renameItem(item);
                     };
+                
                     const deleteBtn = document.createElement('button');
                     deleteBtn.className = 'delete-btn';
                     deleteBtn.textContent = 'Delete';
@@ -734,28 +1115,36 @@
                         e.stopPropagation();
                         deleteItem(item);
                     };
+                
                     actions.appendChild(renameBtn);
                     actions.appendChild(deleteBtn);
-                    el.appendChild(actions);
-
-                    // Click to select and preview
-                    el.onclick = (e) => {
+                    container.appendChild(actions);
+                
+                    // Click and double-click
+                    container.onclick = (e) => {
                         if (e.target === renameBtn || e.target === deleteBtn) return;
-                        // Deselect all
+                        selectedFile = item;
                         document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
                             el.classList.remove('selected')
                         );
-                        el.classList.add('selected');
-                        selectedFile = item;
+                        container.classList.add('selected');
                         renderPreview();
-
-                        // If folder, navigate into it
-                        if (item.is_folder && e.target === content) {
+                    };
+                
+                    container.ondblclick = (e) => {
+                        if (e.target === renameBtn || e.target === deleteBtn) return;
+                        if (item.is_folder) {
                             navigateTo(item.path);
+                        } else {
+                            const storagePath = `${currentUser.id}/${item.path}`;
+                            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                            if (data?.publicUrl) {
+                                window.open(data.publicUrl, '_blank');
+                            }
                         }
                     };
-
-                    fileList.appendChild(el);
+                
+                    fileList.appendChild(container);
                 });
             }
         }
@@ -801,21 +1190,109 @@
                 previewContent.appendChild(summary);
             } else {
                 const storagePath = `${currentUser.id}/${selectedFile.path}`;
-                if (selectedFile.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                const fileName = selectedFile.name.toLowerCase();
+
+                // Image Files
+                if (/\.(jpg|jpeg|png|gif|bmp|svg|webp)$/i.test(fileName)) {
+                    const img = document.createElement('img');
                     const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                     if (data?.publicUrl) {
-                        const img = document.createElement('img');
                         img.src = data.publicUrl;
                         img.alt = selectedFile.name;
+                        img.style.maxWidth = '100%';
+                        img.style.height = 'auto';
+                        img.style.borderRadius = '6px';
+                        img.style.border = '1px solid #ddd';
+                        img.onerror = () => {
+                            img.style.display = 'none';
+                            const errorMsg = document.createElement('p');
+                            errorMsg.textContent = 'Could not load image.';
+                            errorMsg.style.color = '#999';
+                            previewContent.appendChild(errorMsg);
+                        };
                         previewContent.appendChild(img);
                     } else {
-                        previewContent.textContent = "Image preview not available.";
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load image.</p>';
                     }
-                } else if (selectedFile.name.match(/\.txt$/i)) {
+                }
+
+                // PDF Preview
+                else if (fileName.endsWith('.pdf')) {
+                    const iframe = document.createElement('iframe');
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    if (data?.publicUrl) {
+                        iframe.src = data.publicUrl;
+                        iframe.style.width = '100%';
+                        iframe.style.height = '500px';
+                        iframe.style.border = 'none';
+                        iframe.style.borderRadius = '6px';
+                        previewContent.appendChild(iframe);
+                    } else {
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load PDF.</p>';
+                    }
+                }
+            
+                // Video Files
+                else if (/\.(mp4|webm|ogg|avi|mov|mkv)$/i.test(fileName)) {
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.style.width = '100%';
+                    video.style.maxHeight = '400px';
+                    video.style.borderRadius = '6px';
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    if (data?.publicUrl) {
+                        video.src = data.publicUrl;
+                        video.onerror = () => {
+                            previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                        };
+                    } else {
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                    }
+                    previewContent.appendChild(video);
+                }
+            
+                // Audio Files
+                else if (/\.(mp3|wav|ogg|aac|flac|m4a)$/i.test(fileName)) {
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.style.width = '100%';
+                    audio.style.marginTop = '20px';
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    if (data?.publicUrl) {
+                        audio.src = data.publicUrl;
+                        audio.onerror = () => {
+                            previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                        };
+                    } else {
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                    }
+                    
+                    // Add file info for audio
+                    const audioInfo = document.createElement('div');
+                    audioInfo.innerHTML = `
+                        <p><strong>Audio File:</strong> ${selectedFile.name}</p>
+                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                    `;
+                    audioInfo.style.marginBottom = '15px';
+                    previewContent.appendChild(audioInfo);
+                    previewContent.appendChild(audio);
+                }
+
+                // Plain Text Files (including .txt)
+                else if (/\.(txt|md|csv|log|json|js|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts|yml|yaml|ini|cfg|conf)$/i.test(fileName)) {
                     const textarea = document.createElement('textarea');
                     textarea.readOnly = true;
+                    textarea.style.width = '100%';
+                    textarea.style.height = '400px';
+                    textarea.style.border = '1px solid #ddd';
+                    textarea.style.borderRadius = '4px';
+                    textarea.style.padding = '10px';
+                    textarea.style.fontFamily = 'Consolas, Monaco, "Courier New", monospace';
+                    textarea.style.fontSize = '13px';
+                    textarea.style.resize = 'vertical';
                     textarea.textContent = "Loading...";
                     previewContent.appendChild(textarea);
+                    
                     supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
                         .then(({ data, error }) => {
                             if (error) throw error;
@@ -823,17 +1300,74 @@
                         })
                         .then(text => {
                             textarea.value = text;
+                            // Add syntax highlighting for code files
+                            if (/\.(js|json|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts)$/i.test(fileName)) {
+                                textarea.style.backgroundColor = '#f8f8f8';
+                            }
                         })
                         .catch(err => {
-                            textarea.value = "Error loading content.";
+                            textarea.value = "Error loading content: " + err.message;
+                            textarea.style.color = '#999';
                             console.error('Error:', err);
                         });
-                } else {
+                }
+
+                // Office Documents (basic info only)
+                else if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(fileName)) {
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                     previewContent.innerHTML = `
-                        <p><strong>File:</strong> ${selectedFile.name}</p>
-                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
-                        <p><strong>Type:</strong> ${selectedFile.name.split('.').pop().toUpperCase()}</p>
-                        <p>Preview not available for this file type.</p>
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+                            <p><strong>Office Document:</strong> ${selectedFile.name}</p>
+                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                            <p><strong>Type:</strong> ${fileName.split('.').pop().toUpperCase()}</p>
+                            <p style="color: #666; margin: 20px 0;">Office documents cannot be previewed in the browser.</p>
+                            <a href="${data?.publicUrl}" 
+                               download="${selectedFile.name}"
+                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                               Download File
+                            </a>
+                        </div>
+                    `;
+                }
+
+                // Archive Files
+                else if (/\.(zip|rar|7z|tar|gz|bz2)$/i.test(fileName)) {
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    previewContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">📦</div>
+                            <p><strong>Archive File:</strong> ${selectedFile.name}</p>
+                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                            <p><strong>Type:</strong> ${fileName.split('.').pop().toUpperCase()}</p>
+                            <p style="color: #666; margin: 20px 0;">Archive contents cannot be previewed.</p>
+                            <a href="${data?.publicUrl}" 
+                               download="${selectedFile.name}"
+                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                               Download Archive
+                            </a>
+                        </div>
+                    `;
+                }
+            
+                // Generic fallback for unknown file types
+                else {
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    const fileExt = fileName.split('.').pop().toUpperCase();
+                    previewContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+                            <p><strong>File:</strong> ${selectedFile.name}</p>
+                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                            <p><strong>Type:</strong> ${fileExt}</p>
+                            <p style="color: #666; margin: 20px 0;">Preview not available for this file type.</p>
+                            <a href="${data?.publicUrl}" 
+                               download="${selectedFile.name}"
+                               target="_blank" 
+                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                               Download File
+                            </a>
+                        </div>
                     `;
                 }
             }
