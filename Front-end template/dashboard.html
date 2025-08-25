@@ -4,14 +4,61 @@
 <head>
     <meta charset="UTF-8" />
     <title>ভাণ্ড - File Storage</title>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
+
             font-family: Arial, sans-serif;
             background: #f0f2f5;
             padding: 40px;
             margin: 0;
         }
+        /* === Bulk Selection & Checkbox Styles === */
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+.checkbox-container input {
+    margin: 0;
+    transform: scale(1.1);
+}
+.file-item .checkbox-container,
+.folder .checkbox-container {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.folder:hover .checkbox-container,
+.file-item:hover .checkbox-container,
+.folder.selected .checkbox-container,
+.file-item.selected .checkbox-container {
+    opacity: 1;
+}
+/* Selected highlight */
+.folder.selected,
+.file-item.selected {
+    border-color: #2e86de;
+    background: #e1f0ff;
+}
+/* Export Button */
+#exportZipBtn {
+    background-color: #27ae60;
+    width: auto;
+}
+#exportZipBtn:hover {
+    background-color: #219653;
+}
         /* Thumbnail Styles */
         .thumbnail {
             width: 60px;
@@ -454,6 +501,7 @@
                         <button class="btn" id="backBtn">← Back</button>
                         <button class="btn" id="openModalBtn">+ Upload</button>
                         <button class="btn" id="createFolderBtn">📁 New Folder</button>
+<button class="btn" id="exportZipBtn">📦 Export Selected as ZIP</button>
                     </div>
                     <div class="search-filter">
                         <input type="text" id="searchInput" placeholder="Search files (all folders)..." />
@@ -494,1073 +542,925 @@
             <button class="btn" id="uploadBtn">Upload</button>
         </div>
     </div>
-    <script>
-        const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
-        const { createClient } = supabase;
-        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const BUCKET_NAME = 'uploads';
-        // DOM Elements
-        const backBtn = document.getElementById('backBtn');
-        const openModalBtn = document.getElementById('openModalBtn');
-        const createFolderBtn = document.getElementById('createFolderBtn');
-        const uploadModal = document.getElementById('uploadModal');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const fileInput = document.getElementById('fileInput');
-        const folderSelect = document.getElementById('folderSelect');
-        const fileList = document.getElementById('fileList');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const dropZone = document.getElementById('dropZone');
-        const searchInput = document.getElementById('searchInput');
-        const filterSelect = document.getElementById('filterSelect');
-        
-        // Preview Elements
-        const previewHeader = document.getElementById('previewHeader');
-        const previewContent = document.getElementById('previewContent');
-        
-        let currentUser = null;
+    
+ <script>
+    const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const BUCKET_NAME = 'uploads';
 
-        let fileSystem = {};
-        let currentPath = 'root';
-        let selectedFile = null;
-        let allFiles = []; // For universal search
-        let isNavigatingFromHistory = false; // Flag to prevent duplicate history entries
+    // DOM Elements
+    const backBtn = document.getElementById('backBtn');
+    const openModalBtn = document.getElementById('openModalBtn');
+    const createFolderBtn = document.getElementById('createFolderBtn');
+    const exportZipBtn = document.getElementById('exportZipBtn');
+    const uploadModal = document.getElementById('uploadModal');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const folderSelect = document.getElementById('folderSelect');
+    const fileList = document.getElementById('fileList');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const dropZone = document.getElementById('dropZone');
+    const searchInput = document.getElementById('searchInput');
+    const filterSelect = document.getElementById('filterSelect');
 
-        function showLoader(message = 'Loading...') {
-            loadingOverlay.firstElementChild.textContent = message;
-            loadingOverlay.style.display = 'flex';
+    // Preview Elements
+    const previewHeader = document.getElementById('previewHeader');
+    const previewContent = document.getElementById('previewContent');
+
+    let currentUser = null;
+    let fileSystem = {};
+    let currentPath = 'root';
+    let selectedFile = null;
+    let allFiles = [];
+    let isNavigatingFromHistory = false;
+
+    // Bulk Selection
+    let selectedItems = new Set(); // Store selected file/folder paths
+
+    function showLoader(message = 'Loading...') {
+        loadingOverlay.firstElementChild.textContent = message;
+        loadingOverlay.style.display = 'flex';
+    }
+
+    function hideLoader() {
+        loadingOverlay.style.display = 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const pageTitle = document.getElementById('page-title');
+        const quotes = [
+            "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
+            "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
+            "\"Happiness depends upon ourselves.\"", "\"Act, don't react.\"", "\"The obstacle is the way.\"",
+            "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
+        ];
+        const randomIndex = Math.floor(Math.random() * quotes.length);
+        pageTitle.textContent = quotes[randomIndex];
+
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error || !session) {
+            window.location.href = 'login.html';
+            return;
         }
+        currentUser = session.user;
 
-        function hideLoader() {
-            loadingOverlay.style.display = 'none';
-        }
+        initializeBrowserHistory();
+        await refreshFileSystem();
+    });
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            const pageTitle = document.getElementById('page-title');
-            const quotes = [
-                "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
-                "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
-                "\"Happiness depends upon ourselves.\"", "\"Act, don't react.\"", "\"The obstacle is the way.\"",
-                "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
-            ];
-            const randomIndex = Math.floor(Math.random() * quotes.length);
-            pageTitle.textContent = quotes[randomIndex];
+    // STORAGE USAGE
+    const STORAGE_LIMIT_GB = 1;
+    const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
 
-            const { data: { session }, error } = await supabaseClient.auth.getSession();
-            if (error || !session) {
-                window.location.href = 'login.html';
-                return;
-            }
-            currentUser = session.user;
-            
-            // Initialize browser history
-            initializeBrowserHistory();
-            
-            await refreshFileSystem();
-        });
+    function formatBytes(bytes, decimals = 2) {
+        if (!bytes || bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
 
-        // STORAGE USAGE
-        const STORAGE_LIMIT_GB = 1;
-        const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
+    function updateUsageMeter(fileListData) {
+        const usageText = document.getElementById('usageText');
+        const usageProgressBar = document.getElementById('usageProgressBar');
+        const totalUsage = fileListData
+            .filter(item => !item.is_folder && item.size)
+            .reduce((sum, item) => sum + item.size, 0);
+        const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
+        usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
+        usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
+    }
 
-        function formatBytes(bytes, decimals = 2) {
-            if (!bytes || bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-        }
+    async function refreshFileSystem() {
+        showLoader('Fetching files...');
+        try {
+            const { data, error } = await supabaseClient
+                .from('files')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('is_folder', { ascending: false })
+                .order('name', { ascending: true });
 
-        function updateUsageMeter(fileListData) {
-            const usageText = document.getElementById('usageText');
-            const usageProgressBar = document.getElementById('usageProgressBar');
-            const totalUsage = fileListData
-                .filter(item => !item.is_folder && item.size)
-                .reduce((sum, item) => sum + item.size, 0);
-            const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
-            usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
-            usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
-        }
+            if (error) throw error;
 
-        async function refreshFileSystem() {
-            showLoader('Fetching files...');
-            try {
-                const { data, error } = await supabaseClient
-                    .from('files')
-                    .select('*')
-                    .eq('user_id', currentUser.id)
-                    .order('is_folder', { ascending: false })
-                    .order('name', { ascending: true });
-                if (error) throw error;
-                allFiles = data;
-                updateUsageMeter(data);
-                fileSystem = buildFileSystemTree(data);
-                
-                // Verify current path still exists, if not go to root
-                if (currentPath !== 'root' && !findNodeByPath(currentPath, fileSystem)) {
-                    navigateTo('root');
-                } else {
-                    navigateTo(currentPath); // Re-render current view
-                }
-            } catch (error) {
-                console.error('Error fetching file system:', error);
-                alert('Could not load your files.');
-            } finally {
-                hideLoader();
-            }
-        }
+            allFiles = data;
+            updateUsageMeter(data);
+            fileSystem = buildFileSystemTree(data);
 
-        function buildFileSystemTree(flatList) {
-            const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
-            const nodeMap = { "root": rootNode };
-            flatList.forEach(item => {
-                item.children = item.is_folder ? [] : null;
-                nodeMap[item.path] = item;
-            });
-            flatList.forEach(item => {
-                const parent = nodeMap[item.parent_path];
-                if (parent) parent.children.push(item);
-            });
-            return rootNode;
-        }
-
-        // NAVIGATION & RENDERING
-        function findNodeByPath(path, tree) {
-            if (path === 'root') return tree;
-            const parts = path.split('/').slice(1);
-            let currentNode = tree;
-            for (const part of parts) {
-                const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
-                if (nextNode) currentNode = nextNode;
-                else return null;
-            }
-            return currentNode;
-        }
-
-        // Browser History Management
-        function initializeBrowserHistory() {
-            // Get initial path from URL or default to root
-            const urlParams = new URLSearchParams(window.location.search);
-            const initialPath = urlParams.get('path') || 'root';
-            currentPath = initialPath;
-            
-            // Set initial state
-            const initialState = { path: currentPath, page: 'fileStorage' };
-            history.replaceState(initialState, '', `?path=${encodeURIComponent(currentPath)}`);
-            
-            // Listen for browser back/forward events
-            window.addEventListener('popstate', (event) => {
-                if (event.state && event.state.page === 'fileStorage') {
-                    isNavigatingFromHistory = true;
-                    navigateTo(event.state.path);
-                } else {
-                    // If no valid state, go to login
-                    window.location.href = 'login.html';
-                }
-            });
-        }
-
-        function navigateTo(path) {
-            const oldPath = currentPath;
-            currentPath = path;
-            selectedFile = null;
-            
-            // Update browser history (only if not navigating from history)
-            if (!isNavigatingFromHistory) {
-                const state = { path: currentPath, page: 'fileStorage' };
-                const url = `?path=${encodeURIComponent(currentPath)}`;
-                history.pushState(state, '', url);
+            if (currentPath !== 'root' && !findNodeByPath(currentPath, fileSystem)) {
+                navigateTo('root');
             } else {
-                isNavigatingFromHistory = false; // Reset flag
+                navigateTo(currentPath);
             }
-            
-            renderView();
-            backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
-        }
-
-        function renderView() {
-            renderNavBar();
-            renderFileList();
-            renderPreview();
-        }
-
-        function renderNavBar() {
-            const navBar = document.getElementById('navigation-bar');
-            navBar.innerHTML = '';
-            const parts = currentPath.split('/');
-            let pathSoFar = '';
-            parts.forEach((part, index) => {
-                pathSoFar += (index > 0 ? '/' : '') + part;
-                if (index > 0) {
-                    const separator = document.createElement('span');
-                    separator.className = 'nav-separator';
-                    separator.textContent = '>';
-                    navBar.appendChild(separator);
-                }
-                if (index < parts.length - 1) {
-                    const link = document.createElement('a');
-                    link.textContent = (part === 'root') ? 'Home' : part;
-                    link.className = 'nav-link';
-                    link.dataset.path = pathSoFar;
-                    link.onclick = () => navigateTo(pathSoFar);
-                    navBar.appendChild(link);
-                } else {
-                    const current = document.createElement('span');
-                    current.textContent = (part === 'root') ? 'Home' : part;
-                    current.className = 'nav-current';
-                    navBar.appendChild(current);
-                }
-            });
-        }
-
-        function getFilteredFilesForSearch() {
-            let filtered = allFiles;
-
-            const searchTerm = searchInput.value.toLowerCase();
-            if (searchTerm) {
-                filtered = filtered.filter(item =>
-                    item.name.toLowerCase().includes(searchTerm)
-                );
-            }
-
-            const filterType = filterSelect.value;
-            if (filterType !== 'all') {
-                switch (filterType) {
-                    case 'folders':
-                        filtered = filtered.filter(item => item.is_folder);
-                        break;
-                    case 'images':
-                        filtered = filtered.filter(item => !item.is_folder && /\.(jpg|jpeg|png|gif)$/i.test(item.name));
-                        break;
-                    case 'documents':
-                        filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name));
-                        break;
-                    case 'videos':
-                        filtered = filtered.filter(item => !item.is_folder && /\.(mp4|webm|ogg)$/i.test(item.name));
-                        break;
-                    case 'audio':
-                        filtered = filtered.filter(item => !item.is_folder && /\.(mp3|wav|ogg)$/i.test(item.name));
-                        break;
-                    case 'archives':
-                        filtered = filtered.filter(item => !item.is_folder && /\.(zip|rar|7z|tar|gz)$/i.test(item.name));
-                        break;
-                }
-            }
-
-            return filtered.sort((a, b) => {
-                if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
-                return a.name.localeCompare(b.name);
-            });
-        }
-
-        function renderFileList() {
-            const searchTerm = searchInput.value.trim();
-            const isSearching = searchTerm.length > 0;
-
-            if (isSearching) {
-                // Show universal search results
-                // Show universal search results
-                const results = getFilteredFilesForSearch();
-                fileList.innerHTML = '';
-                if (results.length === 0) {
-                    fileList.innerHTML = '<p style="color: #999; text-align: center; margin-top: 20px;">No files found matching your search.</p>';
-                    return;
-                }
-                results.forEach(item => {
-                    // Create container (replaces old 'el')
-                    const container = document.createElement('div');
-                    container.className = item.is_folder ? 'folder' : 'file-item';
-                    container.dataset.path = item.path;
-                
-                    // Preview container with thumbnail
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'file-preview-container';
-                
-                    // Thumbnail element
-                    const thumbnail = document.createElement('div');
-                    const fileName = item.name.toLowerCase();
-                
-                    if (item.is_folder) {
-                        const icon = document.createElement('span');
-                        icon.className = 'folder-icon';
-                        icon.textContent = '📁';
-                        thumbnail.appendChild(icon);
-                    } 
-                    // Image Files
-                    else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
-                        const img = document.createElement('img');
-                        img.className = 'thumbnail';
-                        img.alt = item.name;
-                        img.loading = "lazy";
-                    
-                        const storagePath = `${currentUser.id}/${item.path}`;
-                        const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                        if (data?.publicUrl) {
-                            img.src = data.publicUrl;
-                            if (fileName.endsWith('.gif')) {
-                                img.style.border = "2px solid #ff6600"; // highlight GIFs
-                            }
-                        } else {
-                            img.src = 'https://via.placeholder.com/60?text=img';
-                        }
-                        img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
-                        thumbnail.appendChild(img);
-                    }
-                    // Video Files
-                    else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
-                        const videoThumb = document.createElement('div');
-                        videoThumb.className = 'thumbnail-placeholder';
-                        videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
-                        thumbnail.appendChild(videoThumb);
-                    }
-                    // PDF
-                    else if (fileName.endsWith('.pdf')) {
-                        const pdfThumb = document.createElement('div');
-                        pdfThumb.className = 'thumbnail-placeholder';
-                        pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
-                        thumbnail.appendChild(pdfThumb);
-                    }
-                    // Audio
-                    else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
-                        const audioThumb = document.createElement('div');
-                        audioThumb.className = 'thumbnail-placeholder';
-                        audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
-                        thumbnail.appendChild(audioThumb);
-                    }
-                    // Archives
-                    else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
-                        const archiveThumb = document.createElement('div');
-                        archiveThumb.className = 'thumbnail-placeholder';
-                        archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
-                        thumbnail.appendChild(archiveThumb);
-                    }
-                    // Text / Code
-                    else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
-                        const textThumb = document.createElement('div');
-                        textThumb.className = 'thumbnail-placeholder';
-                        textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
-                        thumbnail.appendChild(textThumb);
-                    }
-                    // Fallback
-                    else {
-                        const fallbackThumb = document.createElement('div');
-                        fallbackThumb.className = 'thumbnail-placeholder';
-                        fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
-                        thumbnail.appendChild(fallbackThumb);
-                    }
-                
-                    previewContainer.appendChild(thumbnail);
-                
-                    // File name
-                    const content = document.createElement('h3');
-                    content.textContent = item.name;
-                    previewContainer.appendChild(content);
-                
-                    // Append preview container
-                    container.appendChild(previewContainer);
-                
-                    // Actions
-                    const actions = document.createElement('div');
-                    actions.className = 'actions';
-                
-                    const renameBtn = document.createElement('button');
-                    renameBtn.className = 'rename-btn';
-                    renameBtn.textContent = 'Rename';
-                    renameBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        renameItem(item);
-                    };
-                
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = 'Delete';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item);
-                    };
-                
-                    actions.appendChild(renameBtn);
-                    actions.appendChild(deleteBtn);
-                    container.appendChild(actions);
-                
-                    // Click to select
-                    container.onclick = (e) => {
-                        if (e.target === renameBtn || e.target === deleteBtn) return;
-                        selectedFile = item;
-                        document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
-                            el.classList.remove('selected')
-                        );
-                        container.classList.add('selected');
-                        renderPreview();
-                    };
-                
-                    // Double-click to open
-                    container.ondblclick = (e) => {
-                        if (e.target === renameBtn || e.target === deleteBtn) return;
-                        if (item.is_folder) {
-                            navigateTo(item.path);
-                        } else {
-                            const storagePath = `${currentUser.id}/${item.path}`;
-                            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                            if (data?.publicUrl) {
-                                window.open(data.publicUrl, '_blank');
-                            }
-                        }
-                    };
-                
-                    // ✅ Append the correct element (container with thumbnail)
-                    fileList.appendChild(container);
-                });
-            } else {
-                // Normal mode: show only current folder's contents
-                const node = findNodeByPath(currentPath, fileSystem);
-                if (!node) {
-                    fileList.innerHTML = '<p>Folder not found.</p>';
-                    return;
-                }
-                const items = node.children || [];
-                fileList.innerHTML = '';
-                if (items.length === 0) {
-                    fileList.innerHTML = '<p style="color: #999; text-align: center;">This folder is empty.</p>';
-                    return;
-                }
-                items.forEach(item => {
-                    const container = document.createElement('div');
-                    container.className = item.is_folder ? 'folder' : 'file-item';
-                    container.dataset.path = item.path;
-                
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'file-preview-container';
-                
-                    const thumbnail = document.createElement('div');
-                    const fileName = item.name.toLowerCase();
-                
-                    if (item.is_folder) {
-                        const icon = document.createElement('span');
-                        icon.className = 'folder-icon';
-                        icon.textContent = '📁';
-                        thumbnail.appendChild(icon);
-                    } 
-                    else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
-                        const img = document.createElement('img');
-                        img.className = 'thumbnail';
-                        img.alt = item.name;
-                        img.loading = "lazy";
-                        const storagePath = `${currentUser.id}/${item.path}`;
-                        const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                        if (data?.publicUrl) {
-                            img.src = data.publicUrl;
-                            if (fileName.endsWith('.gif')) {
-                                img.style.border = "2px solid #ff6600";
-                            }
-                        } else {
-                            img.src = 'https://via.placeholder.com/60?text=img';
-                        }
-                        img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
-                        thumbnail.appendChild(img);
-                    }
-                    else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
-                        const videoThumb = document.createElement('div');
-                        videoThumb.className = 'thumbnail-placeholder';
-                        videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
-                        thumbnail.appendChild(videoThumb);
-                    }
-                    else if (fileName.endsWith('.pdf')) {
-                        const pdfThumb = document.createElement('div');
-                        pdfThumb.className = 'thumbnail-placeholder';
-                        pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
-                        thumbnail.appendChild(pdfThumb);
-                    }
-                    else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
-                        const audioThumb = document.createElement('div');
-                        audioThumb.className = 'thumbnail-placeholder';
-                        audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
-                        thumbnail.appendChild(audioThumb);
-                    }
-                    else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
-                        const archiveThumb = document.createElement('div');
-                        archiveThumb.className = 'thumbnail-placeholder';
-                        archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
-                        thumbnail.appendChild(archiveThumb);
-                    }
-                    else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
-                        const textThumb = document.createElement('div');
-                        textThumb.className = 'thumbnail-placeholder';
-                        textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
-                        thumbnail.appendChild(textThumb);
-                    }
-                    else {
-                        const fallbackThumb = document.createElement('div');
-                        fallbackThumb.className = 'thumbnail-placeholder';
-                        fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
-                        thumbnail.appendChild(fallbackThumb);
-                    }
-                
-                    previewContainer.appendChild(thumbnail);
-                
-                    const content = document.createElement('h3');
-                    content.textContent = item.name;
-                    previewContainer.appendChild(content);
-                
-                    container.appendChild(previewContainer);
-                
-                    // Actions
-                    const actions = document.createElement('div');
-                    actions.className = 'actions';
-                
-                    const renameBtn = document.createElement('button');
-                    renameBtn.className = 'rename-btn';
-                    renameBtn.textContent = 'Rename';
-                    renameBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        renameItem(item);
-                    };
-                
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = 'Delete';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item);
-                    };
-                
-                    actions.appendChild(renameBtn);
-                    actions.appendChild(deleteBtn);
-                    container.appendChild(actions);
-                
-                    // Click and double-click
-                    container.onclick = (e) => {
-                        if (e.target === renameBtn || e.target === deleteBtn) return;
-                        selectedFile = item;
-                        document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
-                            el.classList.remove('selected')
-                        );
-                        container.classList.add('selected');
-                        renderPreview();
-                    };
-                
-                    container.ondblclick = (e) => {
-                        if (e.target === renameBtn || e.target === deleteBtn) return;
-                        if (item.is_folder) {
-                            navigateTo(item.path);
-                        } else {
-                            const storagePath = `${currentUser.id}/${item.path}`;
-                            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                            if (data?.publicUrl) {
-                                window.open(data.publicUrl, '_blank');
-                            }
-                        }
-                    };
-                
-                    fileList.appendChild(container);
-                });
-            }
-        }
-
-        // PREVIEW LOGIC
-        function renderPreview() {
-            if (!selectedFile) {
-                const node = findNodeByPath(currentPath, fileSystem);
-                if (!node) return;
-                previewHeader.textContent = `Contents of "${node.name}"`;
-                previewContent.innerHTML = '';
-                if (node.children.length === 0) {
-                    previewContent.innerHTML = '<p><em>No items in this folder.</em></p>';
-                    return;
-                }
-                const ul = document.createElement('ul');
-                node.children.forEach(item => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<strong>${item.is_folder ? '📁' : '📄'}</strong> ${item.name}`;
-                    if (!item.is_folder && item.size) {
-                        li.innerHTML += ` <span style="color: #888;">(${formatBytes(item.size)})</span>`;
-                    }
-                    ul.appendChild(li);
-                });
-                previewContent.appendChild(ul);
-                return;
-            }
-
-            previewHeader.textContent = selectedFile.name;
-            previewContent.innerHTML = '';
-
-            if (selectedFile.is_folder) {
-                const summary = document.createElement('div');
-                summary.className = 'preview-folder-summary';
-                const folderNode = findNodeByPath(selectedFile.path, fileSystem);
-                const fileCount = folderNode.children.filter(f => !f.is_folder).length;
-                const folderCount = folderNode.children.filter(f => f.is_folder).length;
-                summary.innerHTML = `
-                    <p><strong>Type:</strong> Folder</p>
-                    <p><strong>Path:</strong> ${selectedFile.path}</p>
-                    <p><strong>Contains:</strong> ${folderCount} folders, ${fileCount} files</p>
-                `;
-                previewContent.appendChild(summary);
-            } else {
-                const storagePath = `${currentUser.id}/${selectedFile.path}`;
-                const fileName = selectedFile.name.toLowerCase();
-
-                // Image Files
-                if (/\.(jpg|jpeg|png|gif|bmp|svg|webp)$/i.test(fileName)) {
-                    const img = document.createElement('img');
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    if (data?.publicUrl) {
-                        img.src = data.publicUrl;
-                        img.alt = selectedFile.name;
-                        img.style.maxWidth = '100%';
-                        img.style.height = 'auto';
-                        img.style.borderRadius = '6px';
-                        img.style.border = '1px solid #ddd';
-                        img.onerror = () => {
-                            img.style.display = 'none';
-                            const errorMsg = document.createElement('p');
-                            errorMsg.textContent = 'Could not load image.';
-                            errorMsg.style.color = '#999';
-                            previewContent.appendChild(errorMsg);
-                        };
-                        previewContent.appendChild(img);
-                    } else {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load image.</p>';
-                    }
-                }
-
-                // PDF Preview
-                else if (fileName.endsWith('.pdf')) {
-                    const iframe = document.createElement('iframe');
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    if (data?.publicUrl) {
-                        iframe.src = data.publicUrl;
-                        iframe.style.width = '100%';
-                        iframe.style.height = '500px';
-                        iframe.style.border = 'none';
-                        iframe.style.borderRadius = '6px';
-                        previewContent.appendChild(iframe);
-                    } else {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load PDF.</p>';
-                    }
-                }
-            
-                // Video Files
-                else if (/\.(mp4|webm|ogg|avi|mov|mkv)$/i.test(fileName)) {
-                    const video = document.createElement('video');
-                    video.controls = true;
-                    video.style.width = '100%';
-                    video.style.maxHeight = '400px';
-                    video.style.borderRadius = '6px';
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    if (data?.publicUrl) {
-                        video.src = data.publicUrl;
-                        video.onerror = () => {
-                            previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
-                        };
-                    } else {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
-                    }
-                    previewContent.appendChild(video);
-                }
-            
-                // Audio Files
-                else if (/\.(mp3|wav|ogg|aac|flac|m4a)$/i.test(fileName)) {
-                    const audio = document.createElement('audio');
-                    audio.controls = true;
-                    audio.style.width = '100%';
-                    audio.style.marginTop = '20px';
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    if (data?.publicUrl) {
-                        audio.src = data.publicUrl;
-                        audio.onerror = () => {
-                            previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
-                        };
-                    } else {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
-                    }
-                    
-                    // Add file info for audio
-                    const audioInfo = document.createElement('div');
-                    audioInfo.innerHTML = `
-                        <p><strong>Audio File:</strong> ${selectedFile.name}</p>
-                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
-                    `;
-                    audioInfo.style.marginBottom = '15px';
-                    previewContent.appendChild(audioInfo);
-                    previewContent.appendChild(audio);
-                }
-
-                // Plain Text Files (including .txt)
-                else if (/\.(txt|md|csv|log|json|js|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts|yml|yaml|ini|cfg|conf)$/i.test(fileName)) {
-                    const textarea = document.createElement('textarea');
-                    textarea.readOnly = true;
-                    textarea.style.width = '100%';
-                    textarea.style.height = '400px';
-                    textarea.style.border = '1px solid #ddd';
-                    textarea.style.borderRadius = '4px';
-                    textarea.style.padding = '10px';
-                    textarea.style.fontFamily = 'Consolas, Monaco, "Courier New", monospace';
-                    textarea.style.fontSize = '13px';
-                    textarea.style.resize = 'vertical';
-                    textarea.textContent = "Loading...";
-                    previewContent.appendChild(textarea);
-                    
-                    supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
-                        .then(({ data, error }) => {
-                            if (error) throw error;
-                            return data.text();
-                        })
-                        .then(text => {
-                            textarea.value = text;
-                            // Add syntax highlighting for code files
-                            if (/\.(js|json|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts)$/i.test(fileName)) {
-                                textarea.style.backgroundColor = '#f8f8f8';
-                            }
-                        })
-                        .catch(err => {
-                            textarea.value = "Error loading content: " + err.message;
-                            textarea.style.color = '#999';
-                            console.error('Error:', err);
-                        });
-                }
-
-                // Office Documents (basic info only)
-                else if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(fileName)) {
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    previewContent.innerHTML = `
-                        <div style="text-align: center; padding: 40px;">
-                            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
-                            <p><strong>Office Document:</strong> ${selectedFile.name}</p>
-                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
-                            <p><strong>Type:</strong> ${fileName.split('.').pop().toUpperCase()}</p>
-                            <p style="color: #666; margin: 20px 0;">Office documents cannot be previewed in the browser.</p>
-                            <a href="${data?.publicUrl}" 
-                               download="${selectedFile.name}"
-                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                               Download File
-                            </a>
-                        </div>
-                    `;
-                }
-
-                // Archive Files
-                else if (/\.(zip|rar|7z|tar|gz|bz2)$/i.test(fileName)) {
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    previewContent.innerHTML = `
-                        <div style="text-align: center; padding: 40px;">
-                            <div style="font-size: 48px; margin-bottom: 20px;">📦</div>
-                            <p><strong>Archive File:</strong> ${selectedFile.name}</p>
-                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
-                            <p><strong>Type:</strong> ${fileName.split('.').pop().toUpperCase()}</p>
-                            <p style="color: #666; margin: 20px 0;">Archive contents cannot be previewed.</p>
-                            <a href="${data?.publicUrl}" 
-                               download="${selectedFile.name}"
-                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                               Download Archive
-                            </a>
-                        </div>
-                    `;
-                }
-            
-                // Generic fallback for unknown file types
-                else {
-                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                    const fileExt = fileName.split('.').pop().toUpperCase();
-                    previewContent.innerHTML = `
-                        <div style="text-align: center; padding: 40px;">
-                            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
-                            <p><strong>File:</strong> ${selectedFile.name}</p>
-                            <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
-                            <p><strong>Type:</strong> ${fileExt}</p>
-                            <p style="color: #666; margin: 20px 0;">Preview not available for this file type.</p>
-                            <a href="${data?.publicUrl}" 
-                               download="${selectedFile.name}"
-                               target="_blank" 
-                               style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                               Download File
-                            </a>
-                        </div>
-                    `;
-                }
-            }
-        }
-
-        // EVENT LISTENERS
-        backBtn.addEventListener('click', () => {
-            if (currentPath === 'root') return;
-            const parts = currentPath.split('/');
-            parts.pop();
-            navigateTo(parts.join('/') || 'root');
-        });
-
-        backBtn.style.display = 'none';
-
-        searchInput.addEventListener('input', renderFileList);
-        filterSelect.addEventListener('change', renderFileList);
-
-        openModalBtn.addEventListener('click', () => {
-            updateFolderSelection();
-            if (folderSelect.querySelector(`option[value="${currentPath}"]`)) {
-                folderSelect.value = currentPath;
-            }
-            uploadModal.style.display = 'flex';
-        });
-
-        document.getElementById('closeModalBtn').onclick = () => {
-            uploadModal.style.display = 'none';
-            resetInputs();
-        };
-
-        createFolderBtn.addEventListener('click', async () => {
-            const folderName = prompt("Enter folder name (cannot contain '/'):");
-            if (!folderName || folderName.includes('/')) {
-                if (folderName) alert("Folder name cannot contain '/'");
-                return;
-            }
-            const parentPath = currentPath;
-            const newPath = `${parentPath}/${folderName}`;
-            showLoader('Creating folder...');
-            try {
-                const { error: insertError } = await supabaseClient.from('files').insert({
-                    user_id: currentUser.id,
-                    name: folderName,
-                    path: newPath,
-                    is_folder: true,
-                    parent_path: parentPath
-                });
-                if (insertError) throw insertError;
-                await refreshFileSystem();
-            } catch (error) {
-                console.error('Error creating folder:', error);
-                alert('Failed to create folder.');
-            } finally {
-                hideLoader();
-            }
-        });
-
-        // UPLOAD LOGIC
-        async function uploadFiles(files, parentPath) {
-            if (!files.length) return;
-            showLoader(`Uploading ${files.length} file(s)...`);
-            let successCount = 0;
-            let errorCount = 0;
-            for (const file of files) {
-                const finalName = file.name;
-                const newPath = `${parentPath}/${finalName}`;
-                const storagePath = `${currentUser.id}/${newPath}`;
-                try {
-                    const { data: existing, error: checkError } = await supabaseClient
-                        .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
-                    if (checkError && checkError.code !== 'PGRST116') throw checkError;
-                    if (existing) {
-                        alert(`File "${finalName}" already exists.`);
-                        continue;
-                    }
-                    const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
-                    if (uploadError) throw uploadError;
-                    const { error: insertError } = await supabaseClient.from('files').insert({
-                        user_id: currentUser.id,
-                        name: finalName,
-                        path: newPath,
-                        is_folder: false,
-                        parent_path: parentPath,
-                        size: file.size
-                    });
-                    if (insertError) {
-                        await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
-                        throw insertError;
-                    }
-                    successCount++;
-                } catch (err) {
-                    console.error('Upload failed:', err);
-                    errorCount++;
-                }
-            }
-            const message = `${successCount} file(s) uploaded successfully.` +
-                (errorCount > 0 ? `\n${errorCount} file(s) failed.` : '');
-            alert(message);
-            uploadModal.style.display = 'none';
-            resetInputs();
-            await refreshFileSystem();
+        } catch (error) {
+            console.error('Error fetching file system:', error);
+            alert('Could not load your files.');
+        } finally {
             hideLoader();
         }
+    }
 
-        uploadBtn.addEventListener('click', () => {
-            const files = fileInput.files;
-            if (!files.length) {
-                alert('Select files first.');
-                return;
-            }
-            uploadFiles(files, folderSelect.value);
+    function buildFileSystemTree(flatList) {
+        const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
+        const nodeMap = { "root": rootNode };
+
+        flatList.forEach(item => {
+            item.children = item.is_folder ? [] : null;
+            nodeMap[item.path] = item;
         });
 
-        // Drag & Drop
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, false);
+        flatList.forEach(item => {
+            const parent = nodeMap[item.parent_path];
+            if (parent) parent.children.push(item);
         });
-        dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
-        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'), false);
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
-        dropZone.addEventListener('drop', (e) => {
-            dropZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            uploadFiles(files, currentPath);
-        }, false);
 
-        // RENAME AND DELETE
-        async function renameItem(item) {
-            const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
-            const currentName = item.is_folder ? item.name : nameWithoutExt;
-            const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
-            if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
-                if (newNameRaw) alert("Invalid name or name unchanged.");
+        return rootNode;
+    }
+
+    function findNodeByPath(path, tree) {
+        if (path === 'root') return tree;
+        const parts = path.split('/').slice(1);
+        let currentNode = tree;
+        for (const part of parts) {
+            const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
+            if (nextNode) currentNode = nextNode;
+            else return null;
+        }
+        return currentNode;
+    }
+
+    function initializeBrowserHistory() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialPath = urlParams.get('path') || 'root';
+        currentPath = initialPath;
+
+        const initialState = { path: currentPath, page: 'fileStorage' };
+        history.replaceState(initialState, '', `?path=${encodeURIComponent(currentPath)}`);
+
+        window.addEventListener('popstate', (event) => {
+            if (event.state && event.state.page === 'fileStorage') {
+                isNavigatingFromHistory = true;
+                navigateTo(event.state.path);
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+    }
+
+    function navigateTo(path) {
+        const oldPath = currentPath;
+        currentPath = path;
+        selectedFile = null;
+        selectedItems.clear();
+
+        if (!isNavigatingFromHistory) {
+            const state = { path: currentPath, page: 'fileStorage' };
+            const url = `?path=${encodeURIComponent(currentPath)}`;
+            history.pushState(state, '', url);
+        } else {
+            isNavigatingFromHistory = false;
+        }
+
+        renderView();
+        backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
+    }
+
+    function renderView() {
+        renderNavBar();
+        renderFileList();
+        renderPreview();
+    }
+
+    function renderNavBar() {
+        const navBar = document.getElementById('navigation-bar');
+        navBar.innerHTML = '';
+        const parts = currentPath.split('/');
+        let pathSoFar = '';
+        parts.forEach((part, index) => {
+            pathSoFar += (index > 0 ? '/' : '') + part;
+            if (index > 0) {
+                const separator = document.createElement('span');
+                separator.className = 'nav-separator';
+                separator.textContent = '>';
+                navBar.appendChild(separator);
+            }
+            if (index < parts.length - 1) {
+                const link = document.createElement('a');
+                link.textContent = (part === 'root') ? 'Home' : part;
+                link.className = 'nav-link';
+                link.dataset.path = pathSoFar;
+                link.onclick = () => navigateTo(pathSoFar);
+                navBar.appendChild(link);
+            } else {
+                const current = document.createElement('span');
+                current.textContent = (part === 'root') ? 'Home' : part;
+                current.className = 'nav-current';
+                navBar.appendChild(current);
+            }
+        });
+    }
+
+    function getFilteredFilesForSearch() {
+        let filtered = allFiles;
+        const searchTerm = searchInput.value.toLowerCase();
+        if (searchTerm) {
+            filtered = filtered.filter(item =>
+                item.name.toLowerCase().includes(searchTerm)
+            );
+        }
+        const filterType = filterSelect.value;
+        if (filterType !== 'all') {
+            switch (filterType) {
+                case 'folders':
+                    filtered = filtered.filter(item => item.is_folder);
+                    break;
+                case 'images':
+                    filtered = filtered.filter(item => !item.is_folder && /\.(jpg|jpeg|png|gif)$/i.test(item.name));
+                    break;
+                case 'documents':
+                    filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name));
+                    break;
+                case 'videos':
+                    filtered = filtered.filter(item => !item.is_folder && /\.(mp4|webm|ogg)$/i.test(item.name));
+                    break;
+                case 'audio':
+                    filtered = filtered.filter(item => !item.is_folder && /\.(mp3|wav|ogg)$/i.test(item.name));
+                    break;
+                case 'archives':
+                    filtered = filtered.filter(item => !item.is_folder && /\.(zip|rar|7z|tar|gz)$/i.test(item.name));
+                    break;
+            }
+        }
+        return filtered.sort((a, b) => {
+            if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    function renderFileList() {
+        const searchTerm = searchInput.value.trim();
+        const isSearching = searchTerm.length > 0;
+
+        fileList.innerHTML = '';
+
+        if (isSearching) {
+            const results = getFilteredFilesForSearch();
+            if (results.length === 0) {
+                fileList.innerHTML = '<p style="color: #999; text-align: center; margin-top: 20px;">No files found matching your search.</p>';
                 return;
             }
-            showLoader('Renaming...');
-            try {
-                if (item.is_folder) {
-                    await renameFolder(item, newNameRaw);
+            results.forEach(item => {
+                renderFileItem(item);
+            });
+        } else {
+            const node = findNodeByPath(currentPath, fileSystem);
+            if (!node) {
+                fileList.innerHTML = '<p>Folder not found.</p>';
+                return;
+            }
+            const items = node.children || [];
+            if (items.length === 0) {
+                fileList.innerHTML = '<p style="color: #999; text-align: center;">This folder is empty.</p>';
+                return;
+            }
+            items.forEach(item => {
+                renderFileItem(item);
+            });
+        }
+    }
+
+    function renderFileItem(item) {
+        const container = document.createElement('div');
+        container.className = item.is_folder ? 'folder' : 'file-item';
+        container.dataset.path = item.path;
+
+        // Checkbox
+        const checkboxContainer = document.createElement('div');
+        checkboxContainer.className = 'checkbox-container';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedItems.has(item.path);
+        checkbox.addEventListener('change', (e) => {
+            e.stopPropagation();
+            if (checkbox.checked) {
+                selectedItems.add(item.path);
+            } else {
+                selectedItems.delete(item.path);
+            }
+        });
+        checkboxContainer.appendChild(checkbox);
+        container.appendChild(checkboxContainer);
+
+        // Preview container
+        const previewContainer = document.createElement('div');
+        previewContainer.className = 'file-preview-container';
+
+        const thumbnail = document.createElement('div');
+        const fileName = item.name.toLowerCase();
+
+        if (item.is_folder) {
+            const icon = document.createElement('span');
+            icon.className = 'folder-icon';
+            icon.textContent = '📁';
+            thumbnail.appendChild(icon);
+        } else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
+            const img = document.createElement('img');
+            img.className = 'thumbnail';
+            img.alt = item.name;
+            img.loading = "lazy";
+            const storagePath = `${currentUser.id}/${item.path}`;
+            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+            if (data?.publicUrl) img.src = data.publicUrl;
+            else img.src = 'https://via.placeholder.com/60?text=img';
+            img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
+            thumbnail.appendChild(img);
+        } else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
+            const videoThumb = document.createElement('div');
+            videoThumb.className = 'thumbnail-placeholder';
+            videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
+            thumbnail.appendChild(videoThumb);
+        } else if (fileName.endsWith('.pdf')) {
+            const pdfThumb = document.createElement('div');
+            pdfThumb.className = 'thumbnail-placeholder';
+            pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
+            thumbnail.appendChild(pdfThumb);
+        } else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
+            const audioThumb = document.createElement('div');
+            audioThumb.className = 'thumbnail-placeholder';
+            audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
+            thumbnail.appendChild(audioThumb);
+        } else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
+            const archiveThumb = document.createElement('div');
+            archiveThumb.className = 'thumbnail-placeholder';
+            archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
+            thumbnail.appendChild(archiveThumb);
+        } else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
+            const textThumb = document.createElement('div');
+            textThumb.className = 'thumbnail-placeholder';
+            textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
+            thumbnail.appendChild(textThumb);
+        } else {
+            const fallbackThumb = document.createElement('div');
+            fallbackThumb.className = 'thumbnail-placeholder';
+            fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
+            thumbnail.appendChild(fallbackThumb);
+        }
+
+        previewContainer.appendChild(thumbnail);
+        const content = document.createElement('h3');
+        content.textContent = item.name;
+        previewContainer.appendChild(content);
+        container.appendChild(previewContainer);
+
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'rename-btn';
+        renameBtn.textContent = 'Rename';
+        renameBtn.onclick = (e) => {
+            e.stopPropagation();
+            renameItem(item);
+        };
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteItem(item);
+        };
+        actions.appendChild(renameBtn);
+        actions.appendChild(deleteBtn);
+        container.appendChild(actions);
+
+        // Click and double-click
+        container.onclick = (e) => {
+            if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
+            selectedFile = item;
+            document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
+                el.classList.remove('selected')
+            );
+            container.classList.add('selected');
+            renderPreview();
+        };
+
+        container.ondblclick = (e) => {
+            if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
+            if (item.is_folder) {
+                navigateTo(item.path);
+            } else {
+                const storagePath = `${currentUser.id}/${item.path}`;
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                if (data?.publicUrl) {
+                    window.open(data.publicUrl, '_blank');
+                }
+            }
+        };
+
+        fileList.appendChild(container);
+    }
+
+    // === BULK ZIP EXPORT ===
+    exportZipBtn.addEventListener('click', async () => {
+        if (selectedItems.size === 0) {
+            alert("Please select at least one file or folder to export.");
+            return;
+        }
+        await downloadSelectedAsZip();
+    });
+
+    async function downloadSelectedAsZip() {
+    showLoader(`Creating ZIP with ${selectedItems.size} items...`);
+    const zip = new JSZip();
+
+    try {
+        const promises = Array.from(selectedItems).map(async (path) => {
+            const item = allFiles.find(f => f.path === path);
+            if (!item) return;
+
+            if (item.is_folder) {
+                const folderNode = findNodeByPath(path, fileSystem);
+                await addFolderToZip(zip, folderNode, item.name);
+            } else {
+                const storagePath = `${currentUser.id}/${item.path}`;
+                const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
+                if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
+                // downloadData is already a Blob, no need to call .blob()
+                zip.file(item.name, downloadData);
+            }
+        });
+
+        await Promise.all(promises);
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `export_${new Date().toISOString().slice(0, 10)}.zip`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    } catch (error) {
+        console.error('ZIP creation failed:', error);
+        alert('Failed to create ZIP file: ' + error.message);
+    } finally {
+        hideLoader();
+    }
+}
+
+    async function addFolderToZip(zipFolder, node, folderName) {
+    const dir = zipFolder.folder(folderName);
+    for (const item of node.children) {
+        if (item.is_folder) {
+            const subNode = findNodeByPath(item.path, fileSystem);
+            await addFolderToZip(dir, subNode, item.name);
+        } else {
+            const storagePath = `${currentUser.id}/${item.path}`;
+            const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
+            if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
+            dir.file(item.name, downloadData); // downloadData is Blob
+        }
+    }
+}
+
+    // === REST OF YOUR FUNCTIONS ===
+    function renderPreview() {
+        if (!selectedFile) {
+            const node = findNodeByPath(currentPath, fileSystem);
+            if (!node) return;
+            previewHeader.textContent = `Contents of "${node.name}"`;
+            previewContent.innerHTML = '';
+            if (node.children.length === 0) {
+                previewContent.innerHTML = '<p><em>No items in this folder.</em></p>';
+                return;
+            }
+            const ul = document.createElement('ul');
+            node.children.forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${item.is_folder ? '📁' : '📄'}</strong> ${item.name}`;
+                if (!item.is_folder && item.size) {
+                    li.innerHTML += ` <span style="color: #888;">(${formatBytes(item.size)})</span>`;
+                }
+                ul.appendChild(li);
+            });
+            previewContent.appendChild(ul);
+            return;
+        }
+
+        previewHeader.textContent = selectedFile.name;
+        previewContent.innerHTML = '';
+
+        if (selectedFile.is_folder) {
+            const summary = document.createElement('div');
+            summary.className = 'preview-folder-summary';
+            const folderNode = findNodeByPath(selectedFile.path, fileSystem);
+            const fileCount = folderNode.children.filter(f => !f.is_folder).length;
+            const folderCount = folderNode.children.filter(f => f.is_folder).length;
+            summary.innerHTML = `
+                <p><strong>Type:</strong> Folder</p>
+                <p><strong>Path:</strong> ${selectedFile.path}</p>
+                <p><strong>Contains:</strong> ${folderCount} folders, ${fileCount} files</p>
+            `;
+            previewContent.appendChild(summary);
+        } else {
+            const storagePath = `${currentUser.id}/${selectedFile.path}`;
+            const fileName = selectedFile.name.toLowerCase();
+
+            if (/\.(jpg|jpeg|png|gif|bmp|svg|webp)$/i.test(fileName)) {
+                const img = document.createElement('img');
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                if (data?.publicUrl) {
+                    img.src = data.publicUrl;
+                    img.alt = selectedFile.name;
+                    img.style.maxWidth = '100%';
+                    img.style.height = 'auto';
+                    img.style.borderRadius = '6px';
+                    img.style.border = '1px solid #ddd';
+                    img.onerror = () => {
+                        const errorMsg = document.createElement('p');
+                        errorMsg.textContent = 'Could not load image.';
+                        errorMsg.style.color = '#999';
+                        previewContent.appendChild(errorMsg);
+                    };
+                    previewContent.appendChild(img);
                 } else {
-                    await renameFile(item, newNameRaw);
+                    previewContent.innerHTML = '<p style="color: #999;">Could not load image.</p>';
                 }
-                await refreshFileSystem();
-            } catch (error) {
-                console.error('Rename failed:', error);
-                alert(`Could not rename item: ${error.message}`);
-            } finally {
-                hideLoader();
-            }
-        }
-
-        async function renameFile(item, newNameRaw) {
-            const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
-            const newName = `${newNameRaw}${ext}`;
-            const { data: existing, error: checkError } = await supabaseClient
-                .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
-            if (checkError && checkError.code !== 'PGRST116') throw checkError;
-            if (existing) throw new Error('A file with that name already exists in this folder.');
-            const newPath = `${item.parent_path}/${newName}`;
-            const oldStoragePath = `${currentUser.id}/${item.path}`;
-            const newStoragePath = `${currentUser.id}/${newPath}`;
-            const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
-            if (moveError) throw moveError;
-            const { error: updateError } = await supabaseClient
-                .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
-            if (updateError) {
-                await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
-                throw updateError;
-            }
-        }
-
-        async function renameFolder(item, newName) {
-            const { data: existing, error: checkError } = await supabaseClient
-                .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
-            if (checkError && checkError.code !== 'PGRST116') throw checkError;
-            if (existing) throw new Error('A folder with that name already exists here.');
-            const oldPath = item.path;
-            const newPath = `${item.parent_path}/${newName}`;
-            const { data: descendants, error: fetchError } = await supabaseClient
-                .from('files').select('*').like('path', `${oldPath}/%`);
-            if (fetchError) throw fetchError;
-            const filesToMove = descendants.filter(d => !d.is_folder);
-            if (filesToMove.length > 0) {
-                const movePromises = filesToMove.map(file => {
-                    const fileNewPath = file.path.replace(oldPath, newPath);
-                    return supabaseClient.storage.from(BUCKET_NAME).move(
-                        `${currentUser.id}/${file.path}`,
-                        `${currentUser.id}/${fileNewPath}`
-                    );
-                });
-                const moveResults = await Promise.all(movePromises);
-                const firstMoveError = moveResults.find(res => res.error);
-                if (firstMoveError) {
-                    throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}`);
+            } else if (fileName.endsWith('.pdf')) {
+                const iframe = document.createElement('iframe');
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                if (data?.publicUrl) {
+                    iframe.src = data.publicUrl;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '500px';
+                    iframe.style.border = 'none';
+                    iframe.style.borderRadius = '6px';
+                    previewContent.appendChild(iframe);
+                } else {
+                    previewContent.innerHTML = '<p style="color: #999;">Could not load PDF.</p>';
                 }
-            }
-            const recordsToUpdate = [item, ...descendants].map(record => ({
-                id: record.id,
-                user_id: currentUser.id,
-                name: record.id === item.id ? newName : record.name,
-                path: record.path.replace(oldPath, newPath),
-                parent_path: record.parent_path.replace(oldPath, newPath),
-            }));
-            const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
-            if (updateError) {
-                throw new Error(`Database update failed: ${updateError.message}`);
-            }
-        }
+            } else if (/\.(mp4|webm|ogg|avi|mov|mkv)$/i.test(fileName)) {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.style.width = '100%';
+                video.style.maxHeight = '400px';
+                video.style.borderRadius = '6px';
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                if (data?.publicUrl) {
+                    video.src = data.publicUrl;
+                    video.onerror = () => {
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                    };
+                } else {
+                    previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                }
+                previewContent.appendChild(video);
+            } else if (/\.(mp3|wav|ogg|aac|flac|m4a)$/i.test(fileName)) {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.style.width = '100%';
+                audio.style.marginTop = '20px';
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                if (data?.publicUrl) {
+                    audio.src = data.publicUrl;
+                    audio.onerror = () => {
+                        previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                    };
+                } else {
+                    previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                }
+                const audioInfo = document.createElement('div');
+                audioInfo.innerHTML = `
+                    <p><strong>Audio File:</strong> ${selectedFile.name}</p>
+                    <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                `;
+                audioInfo.style.marginBottom = '15px';
+                previewContent.appendChild(audioInfo);
+                previewContent.appendChild(audio);
+            } else if (/\.(txt|md|csv|log|json|js|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts|yml|yaml|ini|cfg|conf)$/i.test(fileName)) {
+                const textarea = document.createElement('textarea');
+                textarea.readOnly = true;
+                textarea.style.width = '100%';
+                textarea.style.height = '400px';
+                textarea.style.border = '1px solid #ddd';
+                textarea.style.borderRadius = '4px';
+                textarea.style.padding = '10px';
+                textarea.style.fontFamily = 'Consolas, Monaco, "Courier New", monospace';
+                textarea.style.fontSize = '13px';
+                textarea.style.resize = 'vertical';
+                textarea.textContent = "Loading...";
+                previewContent.appendChild(textarea);
 
-        async function deleteItem(item) {
-            if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
-            showLoader('Deleting...');
-            try {
-                let filesToDeleteFromStorage = [];
-                let recordsToDeleteFromDb = [item.id];
-                if (item.is_folder) {
-                    const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
-                    if (error) throw error;
-                    descendants.forEach(d => {
-                        recordsToDeleteFromDb.push(d.id);
-                        if (!d.is_folder) {
-                            filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
+                supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
+                    .then(({ data, error }) => {
+                        if (error) throw error;
+                        return data.text();
+                    })
+                    .then(text => {
+                        textarea.value = text;
+                        if (/\.(js|json|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts)$/i.test(fileName)) {
+                            textarea.style.backgroundColor = '#f8f8f8';
                         }
+                    })
+                    .catch(err => {
+                        textarea.value = "Error loading content: " + err.message;
+                        textarea.style.color = '#999';
+                        console.error('Error:', err);
                     });
-                } else {
-                    filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
-                }
-                if (filesToDeleteFromStorage.length > 0) {
-                    const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
-                    if (storageError) console.warn("Could not delete from storage:", storageError.message);
-                }
-                const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
-                if (dbError) throw dbError;
-                if (selectedFile && selectedFile.id === item.id) {
-                    selectedFile = null;
-                }
-                await refreshFileSystem();
-            } catch (error) {
-                console.error('Error deleting item:', error);
-                alert(`Could not delete item: ${error.message}`);
-            } finally {
-                hideLoader();
+            } else {
+                const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                const fileExt = fileName.split('.').pop().toUpperCase();
+                previewContent.innerHTML = `
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+                        <p><strong>File:</strong> ${selectedFile.name}</p>
+                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                        <p><strong>Type:</strong> ${fileExt}</p>
+                        <p style="color: #666; margin: 20px 0;">Preview not available.</p>
+                        <a href="${data?.publicUrl}" download="${selectedFile.name}" target="_blank"
+                           style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                           Download File
+                        </a>
+                    </div>
+                `;
             }
         }
+    }
 
-        // UTILITY FUNCTIONS
-        function updateFolderSelection() {
-            folderSelect.innerHTML = '<option value="root">Root</option>';
-            function addOptions(folder, prefix = '') {
-                folder.children.forEach(item => {
-                    if (item.is_folder) {
-                        const option = document.createElement('option');
-                        option.value = item.path;
-                        option.textContent = `${prefix}${item.name}`;
-                        folderSelect.appendChild(option);
-                        addOptions(item, `${prefix}${item.name}/`);
+    // === EVENT LISTENERS ===
+    backBtn.addEventListener('click', () => {
+        if (currentPath === 'root') return;
+        const parts = currentPath.split('/');
+        parts.pop();
+        navigateTo(parts.join('/') || 'root');
+    });
+    backBtn.style.display = 'none';
+
+    searchInput.addEventListener('input', renderFileList);
+    filterSelect.addEventListener('change', renderFileList);
+
+    openModalBtn.addEventListener('click', () => {
+        updateFolderSelection();
+        if (folderSelect.querySelector(`option[value="${currentPath}"]`)) {
+            folderSelect.value = currentPath;
+        }
+        uploadModal.style.display = 'flex';
+    });
+
+    document.getElementById('closeModalBtn').onclick = () => {
+        uploadModal.style.display = 'none';
+        resetInputs();
+    };
+
+    createFolderBtn.addEventListener('click', async () => {
+        const folderName = prompt("Enter folder name (cannot contain '/'):");
+        if (!folderName || folderName.includes('/')) {
+            if (folderName) alert("Folder name cannot contain '/'");
+            return;
+        }
+        const parentPath = currentPath;
+        const newPath = `${parentPath}/${folderName}`;
+        showLoader('Creating folder...');
+        try {
+            const { error: insertError } = await supabaseClient.from('files').insert({
+                user_id: currentUser.id,
+                name: folderName,
+                path: newPath,
+                is_folder: true,
+                parent_path: parentPath
+            });
+            if (insertError) throw insertError;
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Error creating folder:', error);
+            alert('Failed to create folder.');
+        } finally {
+            hideLoader();
+        }
+    });
+
+    async function uploadFiles(files, parentPath) {
+        if (!files.length) return;
+        showLoader(`Uploading ${files.length} file(s)...`);
+        let successCount = 0;
+        let errorCount = 0;
+        for (const file of files) {
+            const finalName = file.name;
+            const newPath = `${parentPath}/${finalName}`;
+            const storagePath = `${currentUser.id}/${newPath}`;
+            try {
+                const { data: existing, error: checkError } = await supabaseClient
+                    .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
+                if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                if (existing) {
+                    alert(`File "${finalName}" already exists.`);
+                    continue;
+                }
+                const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
+                if (uploadError) throw uploadError;
+                const { error: insertError } = await supabaseClient.from('files').insert({
+                    user_id: currentUser.id,
+                    name: finalName,
+                    path: newPath,
+                    is_folder: false,
+                    parent_path: parentPath,
+                    size: file.size
+                });
+                if (insertError) {
+                    await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
+                    throw insertError;
+                }
+                successCount++;
+            } catch (err) {
+                console.error('Upload failed:', err);
+                errorCount++;
+            }
+        }
+        const message = `${successCount} file(s) uploaded successfully.` +
+            (errorCount > 0 ? `\n${errorCount} file(s) failed.` : '');
+        alert(message);
+        uploadModal.style.display = 'none';
+        resetInputs();
+        await refreshFileSystem();
+        hideLoader();
+    }
+
+    uploadBtn.addEventListener('click', () => {
+        const files = fileInput.files;
+        if (!files.length) {
+            alert('Select files first.');
+            return;
+        }
+        uploadFiles(files, folderSelect.value);
+    });
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+    dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'), false);
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        uploadFiles(files, currentPath);
+    }, false);
+
+    async function renameItem(item) {
+        const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
+        const currentName = item.is_folder ? item.name : nameWithoutExt;
+        const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
+        if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
+            if (newNameRaw) alert("Invalid name or name unchanged.");
+            return;
+        }
+        showLoader('Renaming...');
+        try {
+            if (item.is_folder) {
+                await renameFolder(item, newNameRaw);
+            } else {
+                await renameFile(item, newNameRaw);
+            }
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Rename failed:', error);
+            alert(`Could not rename item: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function renameFile(item, newNameRaw) {
+        const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
+        const newName = `${newNameRaw}${ext}`;
+        const { data: existing, error: checkError } = await supabaseClient
+            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
+        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+        if (existing) throw new Error('A file with that name already exists in this folder.');
+        const newPath = `${item.parent_path}/${newName}`;
+        const oldStoragePath = `${currentUser.id}/${item.path}`;
+        const newStoragePath = `${currentUser.id}/${newPath}`;
+        const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
+        if (moveError) throw moveError;
+        const { error: updateError } = await supabaseClient
+            .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
+        if (updateError) {
+            await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
+            throw updateError;
+        }
+    }
+
+    async function renameFolder(item, newName) {
+        const { data: existing, error: checkError } = await supabaseClient
+            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
+        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+        if (existing) throw new Error('A folder with that name already exists here.');
+        const oldPath = item.path;
+        const newPath = `${item.parent_path}/${newName}`;
+        const { data: descendants, error: fetchError } = await supabaseClient
+            .from('files').select('*').like('path', `${oldPath}/%`);
+        if (fetchError) throw fetchError;
+        const filesToMove = descendants.filter(d => !d.is_folder);
+        if (filesToMove.length > 0) {
+            const movePromises = filesToMove.map(file => {
+                const fileNewPath = file.path.replace(oldPath, newPath);
+                return supabaseClient.storage.from(BUCKET_NAME).move(
+                    `${currentUser.id}/${file.path}`,
+                    `${currentUser.id}/${fileNewPath}`
+                );
+            });
+            const moveResults = await Promise.all(movePromises);
+            const firstMoveError = moveResults.find(res => res.error);
+            if (firstMoveError) {
+                throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}`);
+            }
+        }
+        const recordsToUpdate = [item, ...descendants].map(record => ({
+            id: record.id,
+            user_id: currentUser.id,
+            name: record.id === item.id ? newName : record.name,
+            path: record.path.replace(oldPath, newPath),
+            parent_path: record.parent_path.replace(oldPath, newPath),
+        }));
+        const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
+        if (updateError) {
+            throw new Error(`Database update failed: ${updateError.message}`);
+        }
+    }
+
+    async function deleteItem(item) {
+        if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
+        showLoader('Deleting...');
+        try {
+            let filesToDeleteFromStorage = [];
+            let recordsToDeleteFromDb = [item.id];
+            if (item.is_folder) {
+                const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
+                if (error) throw error;
+                descendants.forEach(d => {
+                    recordsToDeleteFromDb.push(d.id);
+                    if (!d.is_folder) {
+                        filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
                     }
                 });
+            } else {
+                filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
             }
-            addOptions(fileSystem);
-        }
-
-        function resetInputs() {
-            fileInput.value = '';
-        }
-
-        // Event Listeners
-        logoutBtn.addEventListener('click', async () => {
-            await supabaseClient.auth.signOut();
-            window.location.href = 'login.html';
-        });
-
-        window.addEventListener('click', (e) => {
-            if (e.target === uploadModal) {
-                uploadModal.style.display = 'none';
-                resetInputs();
+            if (filesToDeleteFromStorage.length > 0) {
+                const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
+                if (storageError) console.warn("Could not delete from storage:", storageError.message);
             }
-        });
-    </script>
+            const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
+            if (dbError) throw dbError;
+            if (selectedFile && selectedFile.id === item.id) {
+                selectedFile = null;
+            }
+            await refreshFileSystem();
+        } catch (error) {
+            console.error('Error deleting item:', error);
+            alert(`Could not delete item: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
+    }
+
+    function updateFolderSelection() {
+        folderSelect.innerHTML = '<option value="root">Root</option>';
+        function addOptions(folder, prefix = '') {
+            folder.children.forEach(item => {
+                if (item.is_folder) {
+                    const option = document.createElement('option');
+                    option.value = item.path;
+                    option.textContent = `${prefix}${item.name}`;
+                    folderSelect.appendChild(option);
+                    addOptions(item, `${prefix}${item.name}/`);
+                }
+            });
+        }
+        addOptions(fileSystem);
+    }
+
+    function resetInputs() {
+        fileInput.value = '';
+    }
+
+    logoutBtn.addEventListener('click', async () => {
+        await supabaseClient.auth.signOut();
+        window.location.href = 'login.html';
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === uploadModal) {
+            uploadModal.style.display = 'none';
+            resetInputs();
+        }
+    });
+</script>
+    
 </body>
 
 </html>
