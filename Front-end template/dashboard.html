@@ -6,6 +6,7 @@
     <title>ভাণ্ড - File Storage</title>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
 
@@ -485,13 +486,7 @@
         <div class="controls">
 
         <div id="navigation-bar"></div>
-        <div class="storage-meter-container">
-            <h2>Storage Usage</h2>
-            <div id="usageText">Calculating...</div>
-            <div class="progress-bar-background">
-                <div id="usageProgressBar" class="progress-bar-foreground"></div>
-            </div>
-        </div>
+
         <!-- Two-Panel Layout -->
         <div class="main-content">
             <!-- Left Panel: File System -->
@@ -588,7 +583,15 @@
     function hideLoader() {
         loadingOverlay.style.display = 'none';
     }
-
+    function checkScreenSize() {
+    if (window.innerWidth < 768 && isWidgetOpen) {
+        storageWidget.style.maxHeight = '40px';
+        storageWidgetToggle.textContent = '📊';
+        isWidgetOpen = false;
+    }
+}
+window.addEventListener('resize', checkScreenSize);
+checkScreenSize();
     document.addEventListener('DOMContentLoaded', async () => {
         const pageTitle = document.getElementById('page-title');
         const quotes = [
@@ -625,15 +628,109 @@
     }
 
     function updateUsageMeter(fileListData) {
-        const usageText = document.getElementById('usageText');
-        const usageProgressBar = document.getElementById('usageProgressBar');
-        const totalUsage = fileListData
-            .filter(item => !item.is_folder && item.size)
-            .reduce((sum, item) => sum + item.size, 0);
-        const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
-        usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
-        usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
+    const usageText = document.getElementById('usageText');
+    const usageProgressBar = document.getElementById('usageProgressBar');
+    const totalUsage = fileListData
+        .filter(item => !item.is_folder && item.size)
+        .reduce((sum, item) => sum + item.size, 0);
+
+    const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
+    usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
+    usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
+
+    // Render chart
+    renderStorageChart(fileListData);
+}
+    let storageChart = null; // Global reference
+
+
+function renderStorageChart(fileListData) {
+    const ctx = document.getElementById('storageChart').getContext('2d');
+
+    // Define file type categories
+    const categories = {
+        Images: /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i,
+        Documents: /\.(pdf|txt|md|docx?|pptx?|xlsx?)$/i,
+        Videos: /\.(mp4|webm|ogg|mov|mkv|avi)$/i,
+        Audio: /\.(mp3|wav|ogg|aac|m4a|flac)$/i,
+        Archives: /\.(zip|rar|7z|tar|gz|bz2)$/i,
+        Code: /\.(js|ts|py|java|cpp|c|h|html|css|json|xml|yml|yaml)$/i,
+        Other: true // Fallback
+    };
+
+    const usage = {};
+    Object.keys(categories).forEach(type => (usage[type] = 0));
+
+    fileListData
+        .filter(item => !item.is_folder && item.size)
+        .forEach(file => {
+            const name = file.name.toLowerCase();
+            let matched = false;
+            for (const [type, regex] of Object.entries(categories)) {
+                if (type === 'Other') continue;
+                if (regex.test(name)) {
+                    usage[type] += file.size;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) usage['Other'] += file.size;
+        });
+
+    // Prepare data for Chart.js
+    const labels = Object.keys(usage).filter(type => usage[type] > 0);
+    const data = labels.map(type => usage[type]);
+    const colors = [
+        '#4CAF50', '#2196F3', '#FF9800', '#E91E63',
+        '#9C27B0', '#607D8B', '#FFEB3B'
+    ].slice(0, labels.length);
+
+    // Destroy old chart if exists
+    if (storageChart) {
+        storageChart.destroy();
     }
+
+    storageChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Storage Usage (Bytes)',
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(c => c + '55'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { display: false },
+        tooltip: {
+            bodyFont: { size: 12 },
+            titleFont: { size: 13 },
+            callbacks: {
+                label: function(tooltipItem) {
+                    const bytes = tooltipItem.raw;
+                    return ` ${formatBytes(bytes)}`;
+                }
+            }
+        }
+    },
+    scales: {
+        x: {
+            ticks: { font: { size: 10 } },
+            title: { display: false }
+        },
+        y: {
+            ticks: { font: { size: 11 } }
+        }
+    }
+}
+    });
+}
 
     async function refreshFileSystem() {
         showLoader('Fetching files...');
@@ -1459,8 +1556,82 @@
             resetInputs();
         }
     });
+    // === STORAGE WIDGET TOGGLE ===
+const storageWidget = document.getElementById('storageWidget');
+const storageWidgetToggle = document.getElementById('storageWidgetToggle');
+let isWidgetOpen = true;
+
+storageWidgetToggle.addEventListener('click', () => {
+    if (isWidgetOpen) {
+        storageWidget.style.maxHeight = '40px';
+        storageWidget.style.opacity = 0.8;
+        storageWidgetToggle.textContent = '📊';
+    } else {
+        storageWidget.style.maxHeight = '300px';
+        storageWidget.style.opacity = 1;
+        storageWidgetToggle.textContent = '❌';
+    }
+    isWidgetOpen = !isWidgetOpen;
+});
 </script>
-    
+<!-- Floating Storage Widget -->
+<div id="storageWidget" style="
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 360px;
+    max-height: 300px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    overflow: hidden;
+    z-index: 1000;
+    transition: max-height 0.4s ease, opacity 0.3s ease;
+    opacity: 1;
+">
+    <!-- Toggle Button -->
+    <div id="storageWidgetToggle" style="
+        position: absolute;
+        top: -30px;
+        right: 0;
+        width: 30px;
+        height: 30px;
+        background: #2e86de;
+        color: white;
+        border-radius: 5px;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    ">📊</div>
+
+    <!-- Content -->
+    <div id="storageWidgetContent" style="padding: 15px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #333;">Storage Usage</h3>
+        <div id="usageText" style="font-weight: bold; color: #555; font-size: 12px;">Calculating...</div>
+        <div class="progress-bar-background" style="
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            height: 12px;
+            margin: 8px 0;
+            overflow: hidden;
+        ">
+            <div id="usageProgressBar" class="progress-bar-foreground" style="
+                width: 0%;
+                height: 100%;
+                background-color: #2e86de;
+                border-radius: 5px;
+                transition: width 0.5s ease-in-out;
+            "></div>
+        </div>
+        <div style="height: 150px; margin-top: 10px;">
+            <canvas id="storageChart"></canvas>
+        </div>
+    </div>
+</div>
 </body>
 
 </html>
