@@ -1,882 +1,1122 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <title>ভাণ্ড - File Storage</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f0f2f5;
-      padding: 40px;
-    }
+    <meta charset="UTF-8" />
+    <title>ভাণ্ড - File Storage</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+            padding: 40px;
+            margin: 0;
+        }
 
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: white;
-      border-radius: 10px;
-      padding: 30px;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-      position: relative;
-    }
-    .storage-meter-container {
-    margin-bottom: 20px;
-    }
-    .progress-bar-background {
-        width: 100%;
-        background-color: #e9ecef;
-        border-radius: 5px;
-        height: 20px;
-        margin-top: 10px;
-        overflow: hidden;
-    }
-    .progress-bar-foreground {
-        width: 0%;
-        height: 100%;
-        background-color: #2e86de;
-        border-radius: 5px;
-        transition: width 0.5s ease-in-out;
-    }
-    #usageText {
-        font-weight: bold;
-        color: #555;
-    }
-    .loading-overlay {
-      display: none;
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(255,255,255,0.8);
-      z-index: 100;
-      justify-content: center;
-      align-items: center;
-      font-size: 1.5em;
-      color: #333;
-      text-align: center;
-    }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
 
-    h1 {
-      text-align: center;
-      margin-bottom: 20px;
-      font-style: italic;
-      color: #555;
-    }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-    .btn {
-      display: inline-block;
-      padding: 10px 20px;
-      font-size: 16px;
-      background: #2e86de;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      margin-bottom: 20px;
-      margin-right: 10px;
-    }
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            color: #333;
+        }
 
-    .btn:hover {
-      background: #1b4f72;
-    }
-    
-    #backBtn {
-        background-color: #6c757d;
-    }
-    #backBtn:hover {
-        background-color: #5a6268;
-    }
+        h1 {
+            margin: 0;
+            font-style: italic;
+            color: #555;
+        }
 
-    .section {
-      margin-top: 20px;
-    }
+        /* === Two-Column Layout === */
+        .main-content {
+            display: flex;
+            gap: 30px;
+            height: 600px;
+        }
 
-    .section h2 {
-      border-bottom: 2px solid #ccc;
-      padding-bottom: 5px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .folder, .file-item {
-      background: #f9f9f9;
-      padding: 15px;
-      margin: 15px 0;
-      border-radius: 8px;
-      position: relative;
-    }
-    
-    .folder h3, .file-item h3 {
-      margin: 0 0 10px;
-      display: flex;
-      align-items: center;
-    }
-    
-    .folder > h3 {
-      cursor: pointer;
-    }
-    .folder > h3:hover {
-        color: #2e86de;
-    }
+        .left-panel {
+            flex: 1;
+            border-right: 1px solid #ddd;
+            padding-right: 20px;
+            overflow-y: auto;
+        }
 
-    .folder-icon{
-      margin-right: 8px;
-    }
+        .right-panel {
+            flex: 1;
+            padding: 20px;
+            background: #f9f9fb;
+            border-radius: 8px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
 
-    .file-content {
-      margin-top: 10px;
-      padding-left: 20px;
-      border-left: 2px solid #ddd;
-    }
-    
-    img {
-      max-width: 100%;
-      border-radius: 6px;
-    }
+        /* Controls and Search */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
 
-    textarea {
-      width: 95%;
-      height: 150px;
-      resize: vertical;
-    }
+        .search-filter {
+            display: flex;
+            gap: 10px;
+        }
 
-    .actions {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-    }
+        .search-filter input,
+        .search-filter select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            flex: 1;
+        }
 
-    .rename-btn, .delete-btn {
-      background: #ffc107;
-      color: black;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 14px;
-      margin-left: 5px;
-    }
-    .delete-btn {
-      background: crimson;
-      color: white;
-    }
+        .btn {
+            display: inline-block;
+            padding: 10px 15px;
+            font-size: 14px;
+            background: #2e86de;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
 
-    .rename-btn:hover {
-      background: #e0a800;
-    }
-    .delete-btn:hover {
-      background: darkred;
-    }
+        .btn:hover {
+            background: #1b4f72;
+        }
 
-    /* Modal Styles */
-    .modal {
-      display: none;
-      position: fixed;
-      z-index: 99;
-      left: 0; top: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
-      justify-content: center;
-      align-items: center;
-    }
+        #backBtn {
+            background-color: #6c757d;
+            width: auto;
+        }
 
-    .modal-content {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      width: 400px;
-    }
+        #backBtn:hover {
+            background-color: #5a6268;
+        }
 
-    .modal-content label {
-      font-weight: bold;
-      display: block;
-      margin-top: 10px;
-    }
+        .logout-btn {
+            background: #d63031;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
 
-    .modal-content input, .modal-content select {
-      width: 95%;
-      margin-top: 5px;
-      padding: 8px;
-      margin-bottom: 10px;
-    }
+        .logout-btn:hover {
+            background: #b71c1c;
+        }
 
-    .modal-content .btn {
-      width: 100%;
-    }
+        /* === Navigation Bar === */
+        #navigation-bar {
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
 
-    .close {
-      float: right;
-      font-size: 22px;
-      cursor: pointer;
-    }
-    .logout-btn {
-      background: #d63031;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 5px;
-      font-size: 14px;
-      cursor: pointer;
-      float: right;
-      margin-bottom: 10px;
-    }
+        .nav-link {
+            cursor: pointer;
+            color: #007bff;
+            text-decoration: none;
+        }
 
-    .logout-btn:hover {
-      background: #b71c1c;
-    }
-    
-    #navigation-bar {
-        background: #e9ecef;
-        padding: 10px 15px;
-        border-radius: 5px;
-        font-size: 16px;
-        margin-bottom: 20px;
-    }
-    .nav-link {
-        cursor: pointer;
-        color: #007bff;
-        text-decoration: none;
-    }
-    .nav-link:hover {
-        text-decoration: underline;
-    }
-    .nav-separator {
-        margin: 0 8px;
-        color: #6c757d;
-    }
-    .nav-current {
-        font-weight: bold;
-        color: #343a40;
-    }
+        .nav-link:hover {
+            text-decoration: underline;
+        }
 
-    .drop-zone {
-        border: 2px dashed #ccc;
-        border-radius: 10px;
-        padding: 40px;
-        text-align: center;
-        color: #aaa;
-        margin-bottom: 20px;
-        transition: background-color 0.2s, border-color 0.2s;
-    }
-    .drop-zone.dragover {
-        background-color: #f0f8ff;
-        border-color: #2e86de;
-    }
+        .nav-separator {
+            margin: 0 8px;
+            color: #6c757d;
+        }
 
-  </style>
+        .nav-current {
+            font-weight: bold;
+            color: #343a40;
+        }
+
+        /* File & Folder Items */
+        .folder,
+        .file-item {
+            background: #f9f9f9;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid #eee;
+            position: relative;
+        }
+
+        .folder:hover,
+        .file-item:hover {
+            background: #eef5ff;
+            border-color: #2e86de;
+        }
+
+        .folder.selected,
+        .file-item.selected {
+            border: 2px solid #2e86de;
+            background: #e1f0ff;
+        }
+
+        .folder h3,
+        .file-item h3 {
+            margin: 0;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+        }
+
+        .folder-icon {
+            margin-right: 8px;
+        }
+
+        /* Preview Styles */
+        .preview-header {
+            font-weight: bold;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .preview-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .preview-content img {
+            width: 100%;
+            height: 400px;
+            object-fit: contain;
+            border-radius: 6px;
+            margin: 10px 0;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+        }
+
+        .preview-content textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            resize: none;
+            font-family: monospace;
+        }
+
+        .preview-folder-summary {
+            line-height: 1.8;
+        }
+
+        .preview-empty {
+            color: #aaa;
+            font-style: italic;
+            text-align: center;
+            margin-top: 40%;
+        }
+
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            color: #aaa;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .drop-zone.dragover {
+            background-color: #f0f8ff;
+            border-color: #2e86de;
+        }
+
+        .storage-meter-container {
+            margin-bottom: 20px;
+        }
+
+        .progress-bar-background {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            height: 20px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar-foreground {
+            width: 0%;
+            height: 100%;
+            background-color: #2e86de;
+            border-radius: 5px;
+            transition: width 0.5s ease-in-out;
+        }
+
+        #usageText {
+            font-weight: bold;
+            color: #555;
+        }
+
+        /* Actions */
+        .actions {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: none;
+        }
+
+        .folder:hover .actions,
+        .file-item:hover .actions,
+        .folder.selected .actions,
+        .file-item.selected .actions {
+            display: block;
+        }
+
+        .rename-btn,
+        .delete-btn {
+            background: #ffc107;
+            color: black;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        .delete-btn {
+            background: crimson;
+            color: white;
+        }
+
+        .rename-btn:hover {
+            background: #e0a800;
+        }
+
+        .delete-btn:hover {
+            background: darkred;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 99;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 400px;
+        }
+
+        .modal-content label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+        }
+
+        .modal-content input,
+        .modal-content select {
+            width: 95%;
+            margin-top: 5px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .modal-content .btn {
+            width: 100%;
+        }
+
+        .close {
+            float: right;
+            font-size: 22px;
+            cursor: pointer;
+        }
+    </style>
 </head>
+
 <body>
-  <div class="container">
-    <div class="loading-overlay" id="loadingOverlay"><span>Loading...</span></div>
-    <button class="logout-btn" id="logoutBtn">Logout</button>
-    <h1 id="page-title"></h1>
-    
-    <div id="navigation-bar"></div>
-    <div class="storage-meter-container section">
-    <h2>Storage Usage</h2>
-    <div id="usageText">Calculating...</div>
-    <div class="progress-bar-background">
-        <div id="usageProgressBar" class="progress-bar-foreground"></div>
+    <div class="container">
+        <div class="loading-overlay" id="loadingOverlay"><span>Loading...</span></div>
+        <div class="header">
+            <h1 id="page-title"></h1>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+        <div id="navigation-bar"></div>
+        <div class="storage-meter-container">
+            <h2>Storage Usage</h2>
+            <div id="usageText">Calculating...</div>
+            <div class="progress-bar-background">
+                <div id="usageProgressBar" class="progress-bar-foreground"></div>
+            </div>
+        </div>
+        <!-- Two-Panel Layout -->
+        <div class="main-content">
+            <!-- Left Panel: File System -->
+            <div class="left-panel">
+                <div class="controls">
+                    <div class="btn-group" style="display: flex; gap: 10px;">
+                        <button class="btn" id="backBtn">← Back</button>
+                        <button class="btn" id="openModalBtn">+ Upload</button>
+                        <button class="btn" id="createFolderBtn">📁 New Folder</button>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="searchInput" placeholder="Search files (all folders)..." />
+                        <select id="filterSelect">
+                            <option value="all">All Files</option>
+                            <option value="folders">Folders</option>
+                            <option value="images">Images</option>
+                            <option value="documents">Documents</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="drop-zone" id="dropZone">
+                    Drag & Drop files here to upload
+                </div>
+                <div id="fileList"></div>
+            </div>
+            <!-- Right Panel: Preview -->
+            <div class="right-panel">
+                <h3 class="preview-header" id="previewHeader">Welcome</h3>
+                <div class="preview-content" id="previewContent">
+                    <div class="preview-empty">Select a file or folder to preview</div>
+                </div>
+            </div>
+        </div>
     </div>
-    </div>
-    <button class="btn" id="backBtn"> Back</button>
-    <button class="btn" id="openModalBtn">+ Add Files</button>
-    <button class="btn" id="createFolderBtn">Create Folder</button>
-    
-    <div id="dropZone" class="drop-zone">
-        <p>Drag & Drop files here to upload to the current folder</p>
-    </div>
-
-    <div class="section">
-      <div id="root"></div>
-    </div>
-  </div>
-
+    <!-- Upload Modal -->
     <div class="modal" id="uploadModal">
-    <div class="modal-content">
-      <span class="close" id="closeModalBtn">×</span>
-      <h3>Upload Files</h3>
-
-      <label for="fileInput">Select File(s):</label>
-      <input type="file" id="fileInput" accept=".txt,image/*" multiple>
-      
-      <label for="folderSelect">Select Folder:</label>
-      <select id="folderSelect"></select>
-
-      <button class="btn" id="uploadBtn">Upload</button>
+        <div class="modal-content">
+            <span class="close" id="closeModalBtn">×</span>
+            <h3>Upload Files</h3>
+            <label for="fileInput">Select File(s):</label>
+            <input type="file" id="fileInput" accept=".txt,image/*" multiple />
+            <label for="folderSelect">Select Folder:</label>
+            <select id="folderSelect"></select>
+            <button class="btn" id="uploadBtn">Upload</button>
+        </div>
     </div>
-  </div>
+    <script>
+        const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const BUCKET_NAME = 'uploads';
 
-  <script>
-    const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+        // DOM Elements
+        const backBtn = document.getElementById('backBtn');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const createFolderBtn = document.getElementById('createFolderBtn');
+        const uploadModal = document.getElementById('uploadModal');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const folderSelect = document.getElementById('folderSelect');
+        const fileList = document.getElementById('fileList');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const dropZone = document.getElementById('dropZone');
+        const searchInput = document.getElementById('searchInput');
+        const filterSelect = document.getElementById('filterSelect');
 
-    const { createClient } = supabase;
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const BUCKET_NAME = 'uploads';
+        // Preview Elements
+        const previewHeader = document.getElementById('previewHeader');
+        const previewContent = document.getElementById('previewContent');
 
-    const backBtn = document.getElementById('backBtn');
-    const openModalBtn = document.getElementById('openModalBtn');
-    const createFolderBtn = document.getElementById('createFolderBtn');
-    const uploadModal = document.getElementById('uploadModal');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const fileInput = document.getElementById('fileInput');
-    const folderSelect = document.getElementById('folderSelect');
-    const root = document.getElementById('root');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    const dropZone = document.getElementById('dropZone');
+        let currentUser = null;
+        let fileSystem = {};
+        let currentPath = 'root';
+        let selectedFile = null;
+        let allFiles = []; // For universal search
 
-    let currentUser = null;
-    let fileSystem = {};
-    let currentPath = 'root'; 
-
-    function showLoader(message = 'Loading...') {
-        loadingOverlay.firstElementChild.textContent = message;
-        loadingOverlay.style.display = 'flex';
-    }
-
-    function hideLoader() {
-        loadingOverlay.style.display = 'none';
-    }
-
-    document.addEventListener('DOMContentLoaded', async () => {
-        // --- NEW: Random Quote Generator ---
-        const pageTitle = document.getElementById('page-title');
-        const quotes = [
-            "\"Less is more.\"",
-            "\"Stay hungry, stay foolish.\"",
-            "\"What you seek is seeking you.\"",
-            "\"Be consistent in not being inconsistent.\"",
-            "\"Be yourself; everyone else is already taken.\"",
-            "\"Happiness depends upon ourselves.\"",
-            "\"Act, don’t react.\"",
-            "\"The obstacle is the way.\"",
-            "\"Dream big. Start small.\"",
-            "\"Simplicity is the ultimate sophistication.\"",
-            "\"Do it scared.\""
-        ];
-        const randomIndex = Math.floor(Math.random() * quotes.length);
-        pageTitle.textContent = quotes[randomIndex];
-        // --- End of New Code ---
-
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        if (error || !session) {
-            window.location.href = 'login.html';
-            return;
+        function showLoader(message = 'Loading...') {
+            loadingOverlay.firstElementChild.textContent = message;
+            loadingOverlay.style.display = 'flex';
         }
-        currentUser = session.user;
-        await refreshFileSystem();
-    });
-    // --- NEW: Storage Calculation and Display Functions ---
-    const STORAGE_LIMIT_GB = 1; // Set a 1 GB limit
-    const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
 
-    function formatBytes(bytes, decimals = 2) {
-        if (!bytes || bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
-
-    function updateUsageMeter(fileList) {
-        const usageText = document.getElementById('usageText');
-        const usageProgressBar = document.getElementById('usageProgressBar');
-
-        const totalUsage = fileList
-            .filter(item => !item.is_folder && item.size)
-            .reduce((sum, item) => sum + item.size, 0);
-
-        const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
-
-        usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
-        usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
-    }
-// --- End of New Functions ---
-   // Find this existing function
-    async function refreshFileSystem() {
-        showLoader('Fetching files...');
-        try {
-            const { data, error } = await supabaseClient
-                .from('files')
-                .select('*') // Selects all columns, including the 'size' column
-                .eq('user_id', currentUser.id)
-                .order('is_folder', { ascending: false })
-                .order('name', { ascending: true });
-            if (error) throw error;
-
-            updateUsageMeter(data); // <-- ADD THIS LINE to calculate usage
-
-            fileSystem = buildFileSystemTree(data);
-            renderCurrentView(); 
-        } catch (error) {
-            console.error('Error fetching file system:', error);
-            alert('Could not load your files. Please try again.');
-        } finally {
-            hideLoader();
+        function hideLoader() {
+            loadingOverlay.style.display = 'none';
         }
-    }
-    
-    function buildFileSystemTree(flatList) {
-        const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
-        const nodeMap = { "root": rootNode };
-        flatList.forEach(item => {
-            item.children = item.is_folder ? [] : null;
-            nodeMap[item.path] = item;
-        });
-        flatList.forEach(item => {
-            const parent = nodeMap[item.parent_path];
-            if (parent) parent.children.push(item);
-        });
-        return rootNode;
-    }
 
-    // --- NAVIGATION AND RENDERING ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            const pageTitle = document.getElementById('page-title');
+            const quotes = [
+                "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
+                "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
+                "\"Happiness depends upon ourselves.\"", "\"Act, don’t react.\"", "\"The obstacle is the way.\"",
+                "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
+            ];
+            const randomIndex = Math.floor(Math.random() * quotes.length);
+            pageTitle.textContent = quotes[randomIndex];
 
-    function findNodeByPath(path, tree) {
-        if (path === 'root') return tree;
-        const parts = path.split('/').slice(1); 
-        let currentNode = tree;
-        for (const part of parts) {
-            const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
-            if (nextNode) {
-                currentNode = nextNode;
-            } else {
-                return null; 
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            if (error || !session) {
+                window.location.href = 'login.html';
+                return;
             }
-        }
-        return currentNode;
-    }
-    
-    function navigateTo(path) {
-        currentPath = path;
-        renderCurrentView();
-    }
-
-    function renderCurrentView() {
-        if (currentPath === 'root') {
-            backBtn.style.display = 'none';
-        } else {
-            backBtn.style.display = 'inline-block';
-        }
-
-        const currentNode = findNodeByPath(currentPath, fileSystem);
-        if (!currentNode) {
-            console.error("Could not find node for path:", currentPath);
-            alert("An error occurred. Navigating back to root.");
-            navigateTo('root');
-            return;
-        }
-        renderNavBar();
-        renderFolderContents(currentNode);
-    }
-
-    function renderNavBar() {
-        const navBar = document.getElementById('navigation-bar');
-        navBar.innerHTML = '';
-        const parts = currentPath.split('/');
-        let pathSoFar = '';
-
-        parts.forEach((part, index) => {
-            pathSoFar += (index > 0 ? '/' : '') + part;
-            
-            if (index > 0) {
-                const separator = document.createElement('span');
-                separator.className = 'nav-separator';
-                separator.textContent = '>';
-                navBar.appendChild(separator);
-            }
-
-            if (index < parts.length - 1) {
-                const link = document.createElement('a');
-                link.textContent = (part === 'root') ? 'Home' : part;
-                link.className = 'nav-link';
-                link.dataset.path = pathSoFar;
-                link.onclick = (e) => navigateTo(e.target.dataset.path);
-                navBar.appendChild(link);
-            } else {
-                const current = document.createElement('span');
-                current.textContent = (part === 'root') ? 'Home' : part;
-                current.className = 'nav-current';
-                navBar.appendChild(current);
-            }
-        });
-    }
-
-    function renderFolderContents(node) {
-        root.innerHTML = '';
-        const sortedChildren = [...node.children].sort((a, b) => {
-            if (a.is_folder && !b.is_folder) return -1;
-            if (!a.is_folder && b.is_folder) return 1;
-            return a.name.localeCompare(b.name);
-        });
-
-        sortedChildren.forEach(item => {
-            root.appendChild(item.is_folder ? createFolderElement(item) : createItemElement(item));
-        });
-    }
-
-    function createFolderElement(folder) {
-        const folderEl = document.createElement('div');
-        folderEl.className = 'folder';
-        const title = document.createElement('h3');
-        title.innerHTML = `<span class="folder-icon">📁</span> ${folder.name}`;
-        title.onclick = () => navigateTo(folder.path); 
-        folderEl.appendChild(title);
-        const actions = createActions(folder);
-        folderEl.appendChild(actions);
-        return folderEl;
-    }
-    
-    function createItemElement(item) {
-        const itemEl = document.createElement('div');
-        itemEl.className = 'file-item';
-        const title = document.createElement('h3');
-        title.textContent = item.name;
-        itemEl.appendChild(title);
-        const actions = createActions(item);
-        itemEl.appendChild(actions);
-        const storagePath = `${currentUser.id}/${item.path}`;
-        if (item.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
-            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-            if (data.publicUrl) {
-                const img = document.createElement('img');
-                img.src = data.publicUrl;
-                itemEl.appendChild(img);
-            }
-        } else if (item.name.match(/\.txt$/i)) {
-            const textarea = document.createElement('textarea');
-            textarea.readOnly = true;
-            textarea.textContent = "Loading content...";
-            itemEl.appendChild(textarea);
-            supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
-                .then(({ data, error }) => {
-                    if (error) throw error;
-                    return data.text();
-                }).then(text => {
-                    textarea.textContent = text;
-                }).catch(err => {
-                    textarea.textContent = "Error loading content.";
-                    console.error('Error downloading text file:', err);
-                });
-        }
-        return itemEl;
-    }
-    
-    function createActions(item) {
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'actions';
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'rename-btn';
-        renameBtn.textContent = 'Rename';
-        renameBtn.onclick = () => renameItem(item);
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-btn';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.onclick = () => deleteItem(item);
-        actionsDiv.appendChild(renameBtn);
-        actionsDiv.appendChild(deleteBtn);
-        return actionsDiv;
-    }
-    
-    // --- EVENT LISTENERS ---
-
-    backBtn.addEventListener('click', () => {
-        if (currentPath === 'root') return;
-        const lastSlashIndex = currentPath.lastIndexOf('/');
-        const parentPath = currentPath.substring(0, lastSlashIndex);
-        navigateTo(parentPath);
-    });
-
-    openModalBtn.addEventListener('click', () => {
-        updateFolderSelection();
-        if (folderSelect.querySelector(`option[value="${currentPath}"]`)) {
-            folderSelect.value = currentPath;
-        }
-        uploadModal.style.display = 'flex';
-    });
-    
-    document.getElementById('closeModalBtn').onclick = () => {
-        uploadModal.style.display = 'none';
-        resetInputs();
-    };
-
-    createFolderBtn.addEventListener('click', async () => {
-        const folderName = prompt("Enter folder name (cannot contain '/'):");
-        if (!folderName || folderName.includes('/')) {
-            if (folderName) alert("Folder name cannot contain '/'");
-            return;
-        }
-        const parentPath = currentPath; 
-        const newPath = `${parentPath}/${folderName}`;
-        showLoader('Creating folder...');
-        try {
-            const { error: insertError } = await supabaseClient.from('files').insert({
-                user_id: currentUser.id, name: folderName, path: newPath, is_folder: true, parent_path: parentPath
-            });
-            if (insertError) throw insertError;
+            currentUser = session.user;
             await refreshFileSystem();
-        } catch (error) {
-            console.error('Error creating folder:', error);
-            alert('Failed to create folder. A folder with this name may already exist.');
-        } finally {
-            hideLoader();
+        });
+
+        // STORAGE USAGE
+        const STORAGE_LIMIT_GB = 1;
+        const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!bytes || bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
-    });
 
-    // --- UPLOAD LOGIC FOR BULK/DRAG-DROP ---
-
-    async function uploadFiles(files, parentPath) {
-        if (!files || files.length === 0) {
-            alert('No files to upload.');
-            return;
+        function updateUsageMeter(fileListData) {
+            const usageText = document.getElementById('usageText');
+            const usageProgressBar = document.getElementById('usageProgressBar');
+            const totalUsage = fileListData
+                .filter(item => !item.is_folder && item.size)
+                .reduce((sum, item) => sum + item.size, 0);
+            const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
+            usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
+            usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
         }
-        
-        showLoader(`Preparing to upload ${files.length} files...`);
-        let successCount = 0;
-        let errorCount = 0;
-        const totalFiles = files.length;
 
-        for (let i = 0; i < totalFiles; i++) {
-            const file = files[i];
-            const finalName = file.name;
-            showLoader(`Uploading ${i + 1}/${totalFiles}: ${finalName}`);
-
-            const newPath = `${parentPath}/${finalName}`;
-            const storagePath = `${currentUser.id}/${newPath}`;
-
+        async function refreshFileSystem() {
+            showLoader('Fetching files...');
             try {
-                const { data: existing, error: checkError } = await supabaseClient
-                    .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
-                if (checkError && checkError.code !== 'PGRST116') throw checkError;
-                if (existing) throw new Error(`An item named "${finalName}" already exists.`);
-                
-                const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
-                if (uploadError) throw uploadError;
-
-                const { error: insertError } = await supabaseClient.from('files').insert({
-                    user_id: currentUser.id, 
-                    name: finalName, 
-                    path: newPath, 
-                    is_folder: false, 
-                    parent_path: parentPath,
-                    size: file.size // <-- ADD THIS 'size' property
-                });
-
-                if (insertError) {
-                    await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]); // Rollback
-                    throw insertError;
-                }
-                successCount++;
-            } catch (error) {
-                console.error(`Failed to upload ${finalName}:`, error);
-                errorCount++;
-            }
-        }
-
-        uploadModal.style.display = 'none';
-        resetInputs();
-        await refreshFileSystem();
-
-        let summaryMessage = `${successCount} of ${totalFiles} file(s) uploaded successfully.`;
-        if (errorCount > 0) {
-            summaryMessage += `\n${errorCount} file(s) failed. Check the console for details.`;
-        }
-        alert(summaryMessage);
-        hideLoader();
-    }
-
-    uploadBtn.addEventListener('click', () => {
-        const files = fileInput.files;
-        if (!files.length) {
-            alert('Please select one or more files.');
-            return;
-        }
-        uploadFiles(files, folderSelect.value);
-    });
-
-    // --- Drag and Drop Event Listeners ---
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, preventDefaults, false);
-        document.body.addEventListener(eventName, preventDefaults, false);
-    });
-
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
-    dropZone.addEventListener('drop', (e) => {
-        dropZone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        uploadFiles(files, currentPath);
-    }, false);
-
-
-    // --- RENAME AND DELETE ---
-
-    async function renameItem(item) {
-        const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
-        const currentName = item.is_folder ? item.name : nameWithoutExt;
-        const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
-        
-        if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
-            if (newNameRaw) alert("Invalid name or name unchanged.");
-            return;
-        }
-
-        showLoader('Renaming...');
-        try {
-            if (item.is_folder) {
-                await renameFolder(item, newNameRaw);
-            } else {
-                await renameFile(item, newNameRaw);
-            }
-            await refreshFileSystem();
-        } catch (error) {
-            console.error('Rename failed:', error);
-            alert(`Could not rename item: ${error.message}`);
-        } finally {
-            hideLoader();
-        }
-    }
-
-    async function renameFile(item, newNameRaw) {
-        const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
-        const newName = `${newNameRaw}${ext}`;
-
-        const { data: existing, error: checkError } = await supabaseClient
-            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
-        if (checkError && checkError.code !== 'PGRST116') throw checkError; 
-        if (existing) throw new Error('A file with that name already exists in this folder.');
-
-        const newPath = `${item.parent_path}/${newName}`;
-        const oldStoragePath = `${currentUser.id}/${item.path}`;
-        const newStoragePath = `${currentUser.id}/${newPath}`;
-
-        const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
-        if (moveError) throw moveError;
-
-        const { error: updateError } = await supabaseClient
-            .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
-        if (updateError) {
-            await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
-            throw updateError;
-        }
-    }
-
-    async function renameFolder(item, newName) {
-        const { data: existing, error: checkError } = await supabaseClient
-            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
-        if (checkError && checkError.code !== 'PGRST116') throw checkError;
-        if (existing) throw new Error('A folder with that name already exists here.');
-
-        const oldPath = item.path;
-        const newPath = `${item.parent_path}/${newName}`;
-
-        const { data: descendants, error: fetchError } = await supabaseClient
-            .from('files').select('*').like('path', `${oldPath}/%`);
-        if (fetchError) throw fetchError;
-
-        const filesToMove = descendants.filter(d => !d.is_folder);
-        if (filesToMove.length > 0) {
-            const movePromises = filesToMove.map(file => {
-                const fileNewPath = file.path.replace(oldPath, newPath);
-                return supabaseClient.storage.from(BUCKET_NAME).move(`${currentUser.id}/${file.path}`, `${currentUser.id}/${fileNewPath}`);
-            });
-            const moveResults = await Promise.all(movePromises);
-            const firstMoveError = moveResults.find(res => res.error);
-            if (firstMoveError) {
-                throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}. Renaming process stopped.`);
-            }
-        }
-        
-    const recordsToUpdate = [item, ...descendants].map(record => ({
-        id: record.id,
-        user_id: currentUser.id,
-        name: record.id === item.id ? newName : record.name,
-        path: record.path.replace(oldPath, newPath),
-        parent_path: record.parent_path.replace(oldPath, newPath),
-    }));
-        
-    const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
-    if (updateError) {
-        throw new Error(`Database update failed after moving files. Data might be inconsistent. Error: ${updateError.message}`);
-    }
-    }
-
-    async function deleteItem(item) {
-        if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
-        showLoader('Deleting...');
-        try {
-            let filesToDeleteFromStorage = [];
-            let recordsToDeleteFromDb = [item.id];
-            if (item.is_folder) {
-                const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
+                const { data, error } = await supabaseClient
+                    .from('files')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .order('is_folder', { ascending: false })
+                    .order('name', { ascending: true });
                 if (error) throw error;
-                descendants.forEach(d => {
-                    recordsToDeleteFromDb.push(d.id);
-                    if (!d.is_folder) {
-                        filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
-                    }
-                });
-            } else {
-                filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
+                allFiles = data;
+                updateUsageMeter(data);
+                fileSystem = buildFileSystemTree(data);
+                navigateTo(currentPath); // Re-render current view
+            } catch (error) {
+                console.error('Error fetching file system:', error);
+                alert('Could not load your files.');
+            } finally {
+                hideLoader();
             }
-            if (filesToDeleteFromStorage.length > 0) {
-                 const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
-                if (storageError) console.warn("Could not delete from storage:", storageError.message);
-            }
-            const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
-            if (dbError) throw dbError;
-            await refreshFileSystem();
-        } catch(error) {
-            console.error('Error deleting item:', error);
-            alert(`Could not delete item: ${error.message}`);
-        } finally {
-            hideLoader();
         }
-    }
-    
-    // --- UTILITY FUNCTIONS ---
-    
-    function updateFolderSelection() {
-        folderSelect.innerHTML = '<option value="root">Root</option>';
-        function addOptions(folder, prefix = '') {
-            folder.children.forEach(item => {
-                if (item.is_folder) {
-                    const option = document.createElement('option');
-                    option.value = item.path;
-                    option.textContent = `${prefix}${item.name}`;
-                    folderSelect.appendChild(option);
-                    addOptions(item, `${prefix}${item.name}/`);
+
+        function buildFileSystemTree(flatList) {
+            const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
+            const nodeMap = { "root": rootNode };
+            flatList.forEach(item => {
+                item.children = item.is_folder ? [] : null;
+                nodeMap[item.path] = item;
+            });
+            flatList.forEach(item => {
+                const parent = nodeMap[item.parent_path];
+                if (parent) parent.children.push(item);
+            });
+            return rootNode;
+        }
+
+        // NAVIGATION & RENDERING
+        function findNodeByPath(path, tree) {
+            if (path === 'root') return tree;
+            const parts = path.split('/').slice(1);
+            let currentNode = tree;
+            for (const part of parts) {
+                const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
+                if (nextNode) currentNode = nextNode;
+                else return null;
+            }
+            return currentNode;
+        }
+
+        function navigateTo(path) {
+            currentPath = path;
+            selectedFile = null;
+            renderView();
+            backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
+        }
+
+        function renderView() {
+            renderNavBar();
+            renderFileList();
+            renderPreview();
+        }
+
+        function renderNavBar() {
+            const navBar = document.getElementById('navigation-bar');
+            navBar.innerHTML = '';
+            const parts = currentPath.split('/');
+            let pathSoFar = '';
+            parts.forEach((part, index) => {
+                pathSoFar += (index > 0 ? '/' : '') + part;
+                if (index > 0) {
+                    const separator = document.createElement('span');
+                    separator.className = 'nav-separator';
+                    separator.textContent = '>';
+                    navBar.appendChild(separator);
+                }
+                if (index < parts.length - 1) {
+                    const link = document.createElement('a');
+                    link.textContent = (part === 'root') ? 'Home' : part;
+                    link.className = 'nav-link';
+                    link.dataset.path = pathSoFar;
+                    link.onclick = () => navigateTo(pathSoFar);
+                    navBar.appendChild(link);
+                } else {
+                    const current = document.createElement('span');
+                    current.textContent = (part === 'root') ? 'Home' : part;
+                    current.className = 'nav-current';
+                    navBar.appendChild(current);
                 }
             });
         }
-        addOptions(fileSystem);
-    }
 
-    function resetInputs() {
-        fileInput.value = '';
-    }
-    
-    logoutBtn.addEventListener('click', async () => {
-        await supabaseClient.auth. signOut();
-        window.location.href = 'login.html';
-    });
-    
-    window.addEventListener('click', (e) => {
-        if (e.target === uploadModal) {
+        function getFilteredFilesForSearch() {
+            let filtered = allFiles;
+
+            const searchTerm = searchInput.value.toLowerCase();
+            if (searchTerm) {
+                filtered = filtered.filter(item =>
+                    item.name.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            const filterType = filterSelect.value;
+            if (filterType !== 'all') {
+                switch (filterType) {
+                    case 'folders':
+                        filtered = filtered.filter(item => item.is_folder);
+                        break;
+                    case 'images':
+                        filtered = filtered.filter(item => !item.is_folder && /\.(jpg|jpeg|png|gif)$/i.test(item.name));
+                        break;
+                    case 'documents':
+                        filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name));
+                        break;
+                }
+            }
+
+            return filtered.sort((a, b) => {
+                if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+        }
+
+        function renderFileList() {
+            const searchTerm = searchInput.value.trim();
+            const isSearching = searchTerm.length > 0;
+
+            if (isSearching) {
+                // Show universal search results
+                const results = getFilteredFilesForSearch();
+                fileList.innerHTML = '';
+                if (results.length === 0) {
+                    fileList.innerHTML = '<p style="color: #999; text-align: center; margin-top: 20px;">No files found matching your search.</p>';
+                    return;
+                }
+                results.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = item.is_folder ? 'folder' : 'file-item';
+                    const content = document.createElement('h3');
+                    content.innerHTML = `<span class="folder-icon">${item.is_folder ? '📁' : '📄'}</span> ${item.name}`;
+                    el.appendChild(content);
+
+                    // Actions
+                    const actions = document.createElement('div');
+                    actions.className = 'actions';
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'rename-btn';
+                    renameBtn.textContent = 'Rename';
+                    renameBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        renameItem(item);
+                    };
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deleteItem(item);
+                    };
+                    actions.appendChild(renameBtn);
+                    actions.appendChild(deleteBtn);
+                    el.appendChild(actions);
+
+                    // Click handler: navigate to parent folder and select item
+                    el.onclick = (e) => {
+                        if (e.target === renameBtn || e.target === deleteBtn) return;
+                        // Navigate to the parent folder of the found item
+                        navigateTo(item.parent_path);
+                        // Select the item
+                        selectedFile = item;
+                        document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
+                            el.classList.remove('selected')
+                        );
+                        el.classList.add('selected');
+                        renderPreview();
+                    };
+
+                    fileList.appendChild(el);
+                });
+            } else {
+                // Normal mode: show only current folder's contents
+                const node = findNodeByPath(currentPath, fileSystem);
+                if (!node) {
+                    fileList.innerHTML = '<p>Folder not found.</p>';
+                    return;
+                }
+                const items = node.children || [];
+                fileList.innerHTML = '';
+                if (items.length === 0) {
+                    fileList.innerHTML = '<p style="color: #999; text-align: center;">This folder is empty.</p>';
+                    return;
+                }
+                items.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = item.is_folder ? 'folder' : 'file-item';
+                    const content = document.createElement('h3');
+                    content.innerHTML = `<span class="folder-icon">${item.is_folder ? '📁' : '📄'}</span> ${item.name}`;
+                    el.appendChild(content);
+
+                    // Actions
+                    const actions = document.createElement('div');
+                    actions.className = 'actions';
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'rename-btn';
+                    renameBtn.textContent = 'Rename';
+                    renameBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        renameItem(item);
+                    };
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deleteItem(item);
+                    };
+                    actions.appendChild(renameBtn);
+                    actions.appendChild(deleteBtn);
+                    el.appendChild(actions);
+
+                    // Click to select and preview
+                    el.onclick = (e) => {
+                        if (e.target === renameBtn || e.target === deleteBtn) return;
+                        // Deselect all
+                        document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
+                            el.classList.remove('selected')
+                        );
+                        el.classList.add('selected');
+                        selectedFile = item;
+                        renderPreview();
+
+                        // If folder, navigate into it
+                        if (item.is_folder && e.target === content) {
+                            navigateTo(item.path);
+                        }
+                    };
+
+                    fileList.appendChild(el);
+                });
+            }
+        }
+
+        // PREVIEW LOGIC
+        function renderPreview() {
+            if (!selectedFile) {
+                const node = findNodeByPath(currentPath, fileSystem);
+                if (!node) return;
+                previewHeader.textContent = `Contents of "${node.name}"`;
+                previewContent.innerHTML = '';
+                if (node.children.length === 0) {
+                    previewContent.innerHTML = '<p><em>No items in this folder.</em></p>';
+                    return;
+                }
+                const ul = document.createElement('ul');
+                node.children.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<strong>${item.is_folder ? '📁' : '📄'}</strong> ${item.name}`;
+                    if (!item.is_folder && item.size) {
+                        li.innerHTML += ` <span style="color: #888;">(${formatBytes(item.size)})</span>`;
+                    }
+                    ul.appendChild(li);
+                });
+                previewContent.appendChild(ul);
+                return;
+            }
+
+            previewHeader.textContent = selectedFile.name;
+            previewContent.innerHTML = '';
+
+            if (selectedFile.is_folder) {
+                const summary = document.createElement('div');
+                summary.className = 'preview-folder-summary';
+                const folderNode = findNodeByPath(selectedFile.path, fileSystem);
+                const fileCount = folderNode.children.filter(f => !f.is_folder).length;
+                const folderCount = folderNode.children.filter(f => f.is_folder).length;
+                summary.innerHTML = `
+                    <p><strong>Type:</strong> Folder</p>
+                    <p><strong>Path:</strong> ${selectedFile.path}</p>
+                    <p><strong>Contains:</strong> ${folderCount} folders, ${fileCount} files</p>
+                `;
+                previewContent.appendChild(summary);
+            } else {
+                const storagePath = `${currentUser.id}/${selectedFile.path}`;
+                if (selectedFile.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                    const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
+                    if (data?.publicUrl) {
+                        const img = document.createElement('img');
+                        img.src = data.publicUrl;
+                        img.alt = selectedFile.name;
+                        previewContent.appendChild(img);
+                    } else {
+                        previewContent.textContent = "Image preview not available.";
+                    }
+                } else if (selectedFile.name.match(/\.txt$/i)) {
+                    const textarea = document.createElement('textarea');
+                    textarea.readOnly = true;
+                    textarea.textContent = "Loading...";
+                    previewContent.appendChild(textarea);
+                    supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
+                        .then(({ data, error }) => {
+                            if (error) throw error;
+                            return data.text();
+                        })
+                        .then(text => {
+                            textarea.value = text;
+                        })
+                        .catch(err => {
+                            textarea.value = "Error loading content.";
+                            console.error('Error:', err);
+                        });
+                } else {
+                    previewContent.innerHTML = `
+                        <p><strong>File:</strong> ${selectedFile.name}</p>
+                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                        <p><strong>Type:</strong> ${selectedFile.name.split('.').pop().toUpperCase()}</p>
+                        <p>Preview not available for this file type.</p>
+                    `;
+                }
+            }
+        }
+
+        // EVENT LISTENERS
+        backBtn.addEventListener('click', () => {
+            if (currentPath === 'root') return;
+            const parts = currentPath.split('/');
+            parts.pop();
+            navigateTo(parts.join('/') || 'root');
+        });
+
+        backBtn.style.display = 'none';
+
+        searchInput.addEventListener('input', renderFileList);
+        filterSelect.addEventListener('change', renderFileList);
+
+        openModalBtn.addEventListener('click', () => {
+            updateFolderSelection();
+            if (folderSelect.querySelector(`option[value="${currentPath}"]`)) {
+                folderSelect.value = currentPath;
+            }
+            uploadModal.style.display = 'flex';
+        });
+
+        document.getElementById('closeModalBtn').onclick = () => {
             uploadModal.style.display = 'none';
             resetInputs();
+        };
+
+        createFolderBtn.addEventListener('click', async () => {
+            const folderName = prompt("Enter folder name (cannot contain '/'):");
+            if (!folderName || folderName.includes('/')) {
+                if (folderName) alert("Folder name cannot contain '/'");
+                return;
+            }
+            const parentPath = currentPath;
+            const newPath = `${parentPath}/${folderName}`;
+            showLoader('Creating folder...');
+            try {
+                const { error: insertError } = await supabaseClient.from('files').insert({
+                    user_id: currentUser.id,
+                    name: folderName,
+                    path: newPath,
+                    is_folder: true,
+                    parent_path: parentPath
+                });
+                if (insertError) throw insertError;
+                await refreshFileSystem();
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                alert('Failed to create folder.');
+            } finally {
+                hideLoader();
+            }
+        });
+
+        // UPLOAD LOGIC
+        async function uploadFiles(files, parentPath) {
+            if (!files.length) return;
+            showLoader(`Uploading ${files.length} file(s)...`);
+            let successCount = 0;
+            let errorCount = 0;
+            for (const file of files) {
+                const finalName = file.name;
+                const newPath = `${parentPath}/${finalName}`;
+                const storagePath = `${currentUser.id}/${newPath}`;
+                try {
+                    const { data: existing, error: checkError } = await supabaseClient
+                        .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
+                    if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                    if (existing) {
+                        alert(`File "${finalName}" already exists.`);
+                        continue;
+                    }
+                    const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
+                    if (uploadError) throw uploadError;
+                    const { error: insertError } = await supabaseClient.from('files').insert({
+                        user_id: currentUser.id,
+                        name: finalName,
+                        path: newPath,
+                        is_folder: false,
+                        parent_path: parentPath,
+                        size: file.size
+                    });
+                    if (insertError) {
+                        await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
+                        throw insertError;
+                    }
+                    successCount++;
+                } catch (err) {
+                    console.error('Upload failed:', err);
+                    errorCount++;
+                }
+            }
+            const message = `${successCount} file(s) uploaded successfully.` +
+                (errorCount > 0 ? `\n${errorCount} file(s) failed.` : '');
+            alert(message);
+            uploadModal.style.display = 'none';
+            resetInputs();
+            await refreshFileSystem();
+            hideLoader();
         }
-    });
- 
-  </script>
+
+        uploadBtn.addEventListener('click', () => {
+            const files = fileInput.files;
+            if (!files.length) {
+                alert('Select files first.');
+                return;
+            }
+            uploadFiles(files, folderSelect.value);
+        });
+
+        // Drag & Drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+        dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
+        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'), false);
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
+        dropZone.addEventListener('drop', (e) => {
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            uploadFiles(files, currentPath);
+        }, false);
+
+        // RENAME AND DELETE
+        async function renameItem(item) {
+            const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
+            const currentName = item.is_folder ? item.name : nameWithoutExt;
+            const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
+            if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
+                if (newNameRaw) alert("Invalid name or name unchanged.");
+                return;
+            }
+            showLoader('Renaming...');
+            try {
+                if (item.is_folder) {
+                    await renameFolder(item, newNameRaw);
+                } else {
+                    await renameFile(item, newNameRaw);
+                }
+                await refreshFileSystem();
+            } catch (error) {
+                console.error('Rename failed:', error);
+                alert(`Could not rename item: ${error.message}`);
+            } finally {
+                hideLoader();
+            }
+        }
+
+        async function renameFile(item, newNameRaw) {
+            const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
+            const newName = `${newNameRaw}${ext}`;
+            const { data: existing, error: checkError } = await supabaseClient
+                .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
+            if (checkError && checkError.code !== 'PGRST116') throw checkError;
+            if (existing) throw new Error('A file with that name already exists in this folder.');
+            const newPath = `${item.parent_path}/${newName}`;
+            const oldStoragePath = `${currentUser.id}/${item.path}`;
+            const newStoragePath = `${currentUser.id}/${newPath}`;
+            const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
+            if (moveError) throw moveError;
+            const { error: updateError } = await supabaseClient
+                .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
+            if (updateError) {
+                await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
+                throw updateError;
+            }
+        }
+
+        async function renameFolder(item, newName) {
+            const { data: existing, error: checkError } = await supabaseClient
+                .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
+            if (checkError && checkError.code !== 'PGRST116') throw checkError;
+            if (existing) throw new Error('A folder with that name already exists here.');
+            const oldPath = item.path;
+            const newPath = `${item.parent_path}/${newName}`;
+            const { data: descendants, error: fetchError } = await supabaseClient
+                .from('files').select('*').like('path', `${oldPath}/%`);
+            if (fetchError) throw fetchError;
+            const filesToMove = descendants.filter(d => !d.is_folder);
+            if (filesToMove.length > 0) {
+                const movePromises = filesToMove.map(file => {
+                    const fileNewPath = file.path.replace(oldPath, newPath);
+                    return supabaseClient.storage.from(BUCKET_NAME).move(
+                        `${currentUser.id}/${file.path}`,
+                        `${currentUser.id}/${fileNewPath}`
+                    );
+                });
+                const moveResults = await Promise.all(movePromises);
+                const firstMoveError = moveResults.find(res => res.error);
+                if (firstMoveError) {
+                    throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}`);
+                }
+            }
+            const recordsToUpdate = [item, ...descendants].map(record => ({
+                id: record.id,
+                user_id: currentUser.id,
+                name: record.id === item.id ? newName : record.name,
+                path: record.path.replace(oldPath, newPath),
+                parent_path: record.parent_path.replace(oldPath, newPath),
+            }));
+            const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
+            if (updateError) {
+                throw new Error(`Database update failed: ${updateError.message}`);
+            }
+        }
+
+        async function deleteItem(item) {
+            if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
+            showLoader('Deleting...');
+            try {
+                let filesToDeleteFromStorage = [];
+                let recordsToDeleteFromDb = [item.id];
+                if (item.is_folder) {
+                    const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
+                    if (error) throw error;
+                    descendants.forEach(d => {
+                        recordsToDeleteFromDb.push(d.id);
+                        if (!d.is_folder) {
+                            filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
+                        }
+                    });
+                } else {
+                    filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
+                }
+                if (filesToDeleteFromStorage.length > 0) {
+                    const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
+                    if (storageError) console.warn("Could not delete from storage:", storageError.message);
+                }
+                const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
+                if (dbError) throw dbError;
+                if (selectedFile && selectedFile.id === item.id) {
+                    selectedFile = null;
+                }
+                await refreshFileSystem();
+            } catch (error) {
+                console.error('Error deleting item:', error);
+                alert(`Could not delete item: ${error.message}`);
+            } finally {
+                hideLoader();
+            }
+        }
+
+        // UTILITY FUNCTIONS
+        function updateFolderSelection() {
+            folderSelect.innerHTML = '<option value="root">Root</option>';
+            function addOptions(folder, prefix = '') {
+                folder.children.forEach(item => {
+                    if (item.is_folder) {
+                        const option = document.createElement('option');
+                        option.value = item.path;
+                        option.textContent = `${prefix}${item.name}`;
+                        folderSelect.appendChild(option);
+                        addOptions(item, `${prefix}${item.name}/`);
+                    }
+                });
+            }
+            addOptions(fileSystem);
+        }
+
+        function resetInputs() {
+            fileInput.value = '';
+        }
+
+        // Event Listeners
+        logoutBtn.addEventListener('click', async () => {
+            await supabaseClient.auth.signOut();
+            window.location.href = 'login.html';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === uploadModal) {
+                uploadModal.style.display = 'none';
+                resetInputs();
+            }
+        });
+    </script>
 </body>
+
 </html>
