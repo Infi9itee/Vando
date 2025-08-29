@@ -170,54 +170,66 @@
     </p>
   </div>
 
-  <script>
-    const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+<script>
+  const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
 
-    const { createClient } = supabase;
-    const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { createClient } = supabase;
+  const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const signupForm = document.getElementById('signup-form');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const confirmPasswordInput = document.getElementById('confirm-password');
-    const messageElement = document.getElementById('message');
+  const signupForm = document.getElementById('signup-form');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const confirmPasswordInput = document.getElementById('confirm-password');
+  const messageElement = document.getElementById('message');
 
-    signupForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
+  signupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
 
-      const email = emailInput.value.trim();
-      const password = passwordInput.value.trim();
-      const confirmPassword = confirmPasswordInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+    const confirmPassword = confirmPasswordInput.value.trim();
 
-      if (!email || !password || !confirmPassword) {
-        messageElement.textContent = 'Please fill in all fields.';
-        return;
-      }
-      if (password !== confirmPassword) {
-        messageElement.textContent = 'Passwords do not match.';
-        return;
-      }
-      if (password.length < 6) {
-        messageElement.textContent = 'Password must be at least 6 characters.';
-        return;
-      }
+    // Reset message
+    messageElement.textContent = '';
+    messageElement.style.color = 'crimson';
 
-      const { error } = await _supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: "login.html" }
-      });
+    // Validation
+    if (!email || !password || !confirmPassword) {
+      messageElement.textContent = 'Please fill in all fields.';
+      return;
+    }
 
-      if (error) {
-        messageElement.textContent = `Error: ${error.message}`;
-      } else {
-        messageElement.style.color = "green";
-        messageElement.textContent =
-          'Account created! Check your email to confirm.';
-        signupForm.reset();
-      }
+    if (password !== confirmPassword) {
+      messageElement.textContent = 'Passwords do not match.';
+      return;
+    }
+
+    if (password.length < 6) {
+      messageElement.textContent = 'Password must be at least 6 characters.';
+      return;
+    }
+
+    // Attempt sign-up
+    const { data, error } = await _supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: "login.html" }
     });
-  </script>
+
+    if (error) {
+      messageElement.textContent = `Error: ${error.message}`;
+    } else if (data.user?.identities?.length === 0) {
+      // Email already exists
+      messageElement.textContent = 'This email is already registered. Please log in instead.';
+    } else {
+      // New account created
+      messageElement.style.color = "green";
+      messageElement.textContent = 'Account created! Check your email to confirm.';
+      signupForm.reset();
+    }
+  });
+</script>
+
 </body>
 </html>
