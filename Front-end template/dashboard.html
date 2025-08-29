@@ -1,434 +1,358 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8" />
     <title>ভাণ্ড - File Storage</title>
+    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body {
+        /* === Frutiger Aero Theme Variables === */
+        :root {
+            --aero-primary: #0078d7;
+            --aero-primary-light: #42a5f5;
+            --aero-primary-dark: #0277bd;
+            --aero-secondary: #00bcd4;
+            --aero-accent: #7c4dff;
+            --aero-glow: rgba(66, 165, 245, 0.5);
+            --aero-text: #333;
+            --aero-text-light: #ffffff; /* Pure white */
+            --aero-background: #f0f8ff;
+            --aero-panel-bg: rgba(255, 255, 255, 0.7);
+            --aero-border: rgba(0, 0, 0, 0.1);
+            --aero-shadow: 0 4px 20px rgba(0, 120, 215, 0.3);
+            --aero-gradient-start: rgba(255, 255, 255, 0.8);
+            --aero-gradient-end: rgba(255, 255, 255, 0.2);
+            --aero-highlight: rgba(255, 255, 255, 0.4);
+        }
 
-            font-family: Arial, sans-serif;
-            background: #f0f2f5;
-            padding: 40px;
+        /* === Base Styles === */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--aero-background), #e1f5fe);
+            padding: 20px;
+            box-sizing: border-box;
             margin: 0;
+            overflow: hidden; /* Prevent default page scroll */
+            color: var(--aero-text);
+            height: 100vh; 
         }
-        /* === Bulk Selection & Checkbox Styles === */
-.checkbox-container {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    user-select: none;
-}
-.checkbox-container input {
-    margin: 0;
-    transform: scale(1.1);
-}
-.file-item .checkbox-container,
-.folder .checkbox-container {
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 2;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 2px 4px;
-    border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-.folder:hover .checkbox-container,
-.file-item:hover .checkbox-container,
-.folder.selected .checkbox-container,
-.file-item.selected .checkbox-container {
-    opacity: 1;
-}
-/* Selected highlight */
-.folder.selected,
-.file-item.selected {
-    border-color: #2e86de;
-    background: #e1f0ff;
-}
-/* Export Button */
-#exportZipBtn {
-    background-color: #27ae60;
-    width: auto;
-}
-#exportZipBtn:hover {
-    background-color: #219653;
-}
-        /* Thumbnail Styles */
-        .thumbnail {
-            width: 60px;
-            height: 60px;
-            object-fit: cover;
-            border-radius: 6px;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            flex-shrink: 0;
-        }
-        .thumbnail-placeholder {
-            width: 60px;
-            height: 60px;
-            background: #e0e0e0;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #999;
-            font-size: 12px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-        .file-preview-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .file-preview-container h3 {
-            margin: 0;
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+
+        /* === Main Layout Containers === */
         .container {
-            max-width: 1200px;
+            max-width: 1200px; /* Responsive max width */
+            width: calc(100% - 40px);
             margin: auto;
-            background: white;
-            border-radius: 10px;
+            background: var(--aero-panel-bg);
+            border-radius: 12px;
             padding: 30px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            height: calc(100vh - 40px); /* Subtract twice the body padding */
+            box-shadow: var(--aero-shadow);
             position: relative;
             display: flex;
             flex-direction: column;
             gap: 20px;
+            box-sizing: border-box;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--aero-border);
+            overflow: visible; /* Prevent clipping of absolute children */
         }
 
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 15px 20px;
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), var(--aero-primary);
+            border-radius: 8px;
+            color: var(--aero-text-light);
+            box-shadow: inset 0 1px 0 var(--aero-highlight);
+            position: relative;
+            overflow: hidden;
         }
-
-        .loading-overlay {
-            display: none;
+        .header h1, .header .logout-btn {
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            font-weight: bold;
+        }
+        .header::before {
+            content: '';
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.9);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-            font-size: 1.5em;
-            color: #333;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
+            pointer-events: none;
         }
 
-        h1 {
-            margin: 0;
-            font-style: italic;
-            color: #555;
-        }
-
-        /* === Two-Column Layout === */
         .main-content {
             display: flex;
-            gap: 30px;
-            height: 600px;
+            height: calc(100vh - 120px); /* Full height minus header */
+            min-height: 500px; /* Ensure minimum height */
+            gap: 15px;
         }
 
+        /* === Left Panel (File Explorer Area) === */
         .left-panel {
             flex: 1;
-            border-right: 1px solid #ddd;
-            padding-right: 20px;
-            overflow-y: auto;
-        }
-
-        .right-panel {
-            flex: 1;
-            padding: 20px;
-            background: #f9f9fb;
-            border-radius: 8px;
-            overflow-y: auto;
             display: flex;
             flex-direction: column;
+            background: var(--aero-panel-bg);
+            border-radius: 8px;
+            padding: 15px;
+            backdrop-filter: blur(5px);
+            border: 1px solid var(--aero-border);
+            overflow: hidden; /* Prevent panel itself from scrolling */
         }
 
-        /* Controls and Search */
+        /* === Sidebar (Storage Info) === */
+        .sidebar {
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--aero-panel-bg);
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid var(--aero-border);
+            flex-shrink: 0;
+        }
+
+        /* === File Explorer Area === */
+        .file-explorer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--aero-panel-bg);
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid var(--aero-border);
+            overflow: hidden;
+        }
+        .file-explorer #fileList {
+            flex: 1;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        /* === Controls and Toolbar === */
         .controls {
             display: flex;
             flex-direction: column;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .explorer-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
             gap: 10px;
-            margin-bottom: 15px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
         .search-filter {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            flex: 1;
+            max-width: 350px;
         }
-
-        .search-filter input,
-        .search-filter select {
-            padding: 8px;
-            border: 1px solid #ddd;
+        .search-filter input, .search-filter select {
+            padding: 6px;
+            border: 1px solid var(--aero-border);
+            font-size: 13px;
             border-radius: 4px;
             flex: 1;
+            background: rgba(255, 255, 255, 0.5);
         }
 
-        .btn {
-            display: inline-block;
-            padding: 10px 15px;
+        /* === Drop Zone === */
+        .drop-zone {
+            border: 2px dashed var(--aero-primary);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            color: #777;
+            margin-bottom: 10px;
+            flex-shrink: 0;
             font-size: 14px;
-            background: #2e86de;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
+            background: rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
         }
-
-        .btn:hover {
-            background: #1b4f72;
-        }
-
-        #backBtn {
-            background-color: #6c757d;
-            width: auto;
-        }
-
-        #backBtn:hover {
-            background-color: #5a6268;
-        }
-
-        .logout-btn {
-            background: #d63031;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 5px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-
-        .logout-btn:hover {
-            background: #b71c1c;
+        .drop-zone.dragover {
+            background-color: rgba(66, 165, 245, 0.1);
+            border-color: var(--aero-primary-light);
+            box-shadow: inset 0 0 10px var(--aero-glow);
         }
 
         /* === Navigation Bar === */
         #navigation-bar {
-            background: #e9ecef;
+            background: var(--aero-panel-bg);
             padding: 10px 15px;
             border-radius: 5px;
             font-size: 14px;
             margin-bottom: 10px;
+            backdrop-filter: blur(5px);
+            border: 1px solid var(--aero-border);
         }
-
+        #navigation-bar .nav-current {
+            color: #1a1a1a;
+            font-weight: 700;
+        }
+        #navigation-bar .nav-link {
+            color: #0066cc;
+            font-weight: 500;
+        }
         .nav-link {
             cursor: pointer;
-            color: #007bff;
+            color: var(--aero-primary);
             text-decoration: none;
         }
-
         .nav-link:hover {
             text-decoration: underline;
         }
-
         .nav-separator {
             margin: 0 8px;
             color: #6c757d;
         }
 
-        .nav-current {
-            font-weight: bold;
-            color: #343a40;
-        }
-
-        /* File & Folder Items */
-        .folder,
-        .file-item {
-            background: #f9f9f9;
+        /* === File/Folder Items === */
+        .folder, .file-item {
+            background: var(--aero-panel-bg);
             padding: 10px;
             margin: 8px 0;
             border-radius: 8px;
             cursor: pointer;
-            border: 1px solid #eee;
+            border: 1px solid var(--aero-border);
             position: relative;
             display: flex;
             align-items: center;
             gap: 12px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(2px);
         }
-
-        .folder:hover,
-        .file-item:hover {
-            background: #eef5ff;
-            border-color: #2e86de;
+        .folder:hover, .file-item:hover {
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #eef5ff;
+            border-color: var(--aero-primary);
+            box-shadow: 0 2px 8px rgba(0, 120, 215, 0.2);
         }
-
-        .folder.selected,
-        .file-item.selected {
-            border: 2px solid #2e86de;
-            background: #e1f0ff;
+        .folder.selected, .file-item.selected {
+            border: 2px solid var(--aero-primary);
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #e1f0ff;
+            box-shadow: 0 0 8px var(--aero-glow);
         }
-
-        .folder h3,
-        .file-item h3 {
+        .folder h3, .file-item h3 {
             margin: 0;
             font-size: 16px;
             display: flex;
             align-items: center;
         }
 
-        .folder-icon {
-            margin-right: 8px;
-        }
-
-        /* Double-click hint */
-        .folder::after,
-        .file-item::after {
-            content: 'Double-click to open';
-            position: absolute;
-            bottom: 4px;
-            right: 8px;
-            font-size: 10px;
-            color: #888;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .folder:hover::after,
-        .file-item:hover::after {
-            opacity: 0.7;
-        }
-
-        /* Preview Styles */
-        .preview-header {
-            font-weight: bold;
-            border-bottom: 2px solid #ddd;
-            padding-bottom: 8px;
-            margin-bottom: 15px;
-            color: #333;
-        }
-
-        .preview-content {
+        .file-preview-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             flex: 1;
-            overflow-y: auto;
         }
-
-        .preview-content img {
-            width: 100%;
-            height: 400px;
-            object-fit: contain;
+        .thumbnail, .thumbnail-placeholder {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
             border-radius: 6px;
-            margin: 10px 0;
             background: #f0f0f0;
-            border: 1px solid #ddd;
-        }
-
-        .preview-content textarea {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: transparent;
-            resize: none;
-            font-family: monospace;
-        }
-
-        .preview-folder-summary {
-            line-height: 1.8;
-        }
-
-        .preview-empty {
-            color: #aaa;
-            font-style: italic;
+            border: 1px solid var(--aero-border);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
             text-align: center;
-            margin-top: 40%;
         }
-        .drop-zone {
-            border: 2px dashed #ccc;
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            color: #aaa;
-            margin-bottom: 20px;
-            font-size: 14px;
+        .thumbnail-placeholder {
+            background: rgba(224, 224, 224, 0.5);
+            color: #777;
         }
 
-        .drop-zone.dragover {
-            background-color: #f0f8ff;
-            border-color: #2e86de;
-        }
-
-        .storage-meter-container {
-            margin-bottom: 20px;
-        }
-
-        .progress-bar-background {
-            width: 100%;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            height: 20px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .progress-bar-foreground {
-            width: 0%;
-            height: 100%;
-            background-color: #2e86de;
-            border-radius: 5px;
-            transition: width 0.5s ease-in-out;
-        }
-
-        #usageText {
-            font-weight: bold;
-            color: #555;
-        }
-
-        /* Actions */
         .actions {
             position: absolute;
             top: 8px;
             right: 8px;
             display: none;
         }
-
-        .folder:hover .actions,
-        .file-item:hover .actions,
-        .folder.selected .actions,
-        .file-item.selected .actions {
+        .folder:hover .actions, .file-item:hover .actions,
+        .folder.selected .actions, .file-item.selected .actions {
             display: block;
         }
 
-        .rename-btn,
-        .delete-btn {
-            background: #ffc107;
+        /* === Buttons === */
+        .btn {
+            display: inline-block;
+            padding: 6px 10px;
+            font-size: 12px;
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), var(--aero-primary);
+            color: white;
+            border: 1px solid var(--aero-primary-dark);
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s ease;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+            font-weight: 600;
+        }
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.4), transparent);
+            pointer-events: none;
+            border-radius: 6px 6px 0 0;
+        }
+        .btn:hover {
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), var(--aero-primary-light);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 0 8px var(--aero-glow);
+        }
+        .btn:active {
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+            transform: translateY(1px);
+        }
+
+        #backBtn { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #6c757d; border: 1px solid #5a6268; }
+        #backBtn:hover { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #5a6268; }
+
+        #exportZipBtn { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #27ae60; border: 1px solid #219653; }
+        #exportZipBtn:hover { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #219653; }
+
+        .logout-btn { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #d63031; border: 1px solid #b71c1c; color: white; }
+        .logout-btn:hover { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #b71c1c; }
+
+        .rename-btn, .delete-btn {
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #ffc107;
             color: black;
-            border: none;
+            border: 1px solid #e0a800;
             padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
             margin-left: 5px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
+        .rename-btn:hover { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), #e0a800; }
+        .delete-btn { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), crimson; color: white; border: 1px solid darkred; }
+        .delete-btn:hover { background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), darkred; }
 
-        .delete-btn {
-            background: crimson;
-            color: white;
-        }
-
-        .rename-btn:hover {
-            background: #e0a800;
-        }
-
-        .delete-btn:hover {
-            background: darkred;
-        }
-
-        /* Modal Styles */
+        /* === Modals === */
         .modal {
             display: none;
             position: fixed;
@@ -441,40 +365,258 @@
             justify-content: center;
             align-items: center;
         }
-
         .modal-content {
-            background: white;
+            background: var(--aero-panel-bg);
             padding: 20px;
             border-radius: 10px;
             width: 400px;
+            box-shadow: var(--aero-shadow);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--aero-border);
         }
-
         .modal-content label {
             font-weight: bold;
             display: block;
             margin-top: 10px;
+            color: var(--aero-text);
         }
-
-        .modal-content input,
-        .modal-content select {
+        .modal-content input, .modal-content select {
             width: 95%;
             margin-top: 5px;
             padding: 8px;
             margin-bottom: 10px;
+            border: 1px solid var(--aero-border);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.5);
         }
-
-        .modal-content .btn {
-            width: 100%;
-        }
-
         .close {
             float: right;
             font-size: 22px;
             cursor: pointer;
+            color: var(--aero-text);
+        }
+
+        /* === Storage Info Widget === */
+        #storageInfoWidget {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .storage-widget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: white;
+            background: var(--aero-primary);
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
+        .storage-widget-header h3 { margin: 0; font-size: 16px; }
+        .folder-tree {
+            margin-top: 12px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+            border: 1px solid var(--aero-border);
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: calc(100vh - 250px);
+        }
+        .folder-tree ul { list-style: none; padding-left: 15px; margin: 4px 0; }
+        .folder-tree li {
+            cursor: pointer;
+            padding: 4px 6px;
+            user-select: none;
+            border-radius: 4px;
+        }
+        .folder-tree li:hover {
+            color: var(--aero-primary-dark);
+            font-weight: 500;
+            background: rgba(0, 120, 215, 0.1);
+        }
+        .storage-widget-toggle {
+            font-size: 18px;
+            transition: transform 0.3s ease;
+        }
+        .storage-widget-toggle.collapsed { transform: rotate(180deg); }
+        .storage-widget-content { padding: 15px; display: block; }
+        .storage-widget-content.collapsed { display: none; }
+        #usageText {
+            margin: 4px 0;
+            font-size: 12px;
+            color: var(--aero-primary-dark);
+            font-weight: bold;
+        }
+        #storageChartContainer {
+            width: 100%;
+            height: 160px;
+            margin: 10px 0;
+        }
+        #storageChart { width: 100% !important; height: 100% !important; }
+
+        .storage-summary {
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .storage-summary p {
+            margin: 4px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+
+        /* === Preview Modal === */
+        #previewModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        #previewModal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: -1;
+        }
+        .preview-modal-content {
+            background-color: var(--aero-panel-bg);
+            max-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--aero-border);
+            border-radius: 8px;
+            box-shadow: var(--aero-shadow);
+            margin: 0 auto;
+            width: 95%;
+            max-width: 1200px;
+            height: calc(100vh - 30px);
+            overflow: hidden;
+        }
+        .preview-modal-header {
+            padding: 15px 20px;
+            background: linear-gradient(to bottom, var(--aero-gradient-start), var(--aero-gradient-end)), var(--aero-primary);
+            color: var(--aero-text-light);
+            border-bottom: 1px solid var(--aero-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+        }
+        .preview-modal-close {
+            color: var(--aero-text-light);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+        .preview-modal-close:hover, .preview-modal-close:focus { color: #bbb; }
+        .preview-modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            overflow-x: auto;
+            flex: 1;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .preview-modal-body img {
+            max-width: 100%;
+            max-height: 75vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+            border: 1px solid var(--aero-border);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .preview-modal-body textarea {
+            width: 100%;
+            min-height: 70vh;
+            border: 1px solid var(--aero-border);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            box-sizing: border-box;
+            background-color: #fafafa;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        .preview-modal-body iframe {
+            width: 100%;
+            height: 65vh;
+            border: none;
+            border-radius: 6px;
+        }
+        .preview-modal-body video, .preview-modal-body audio {
+            width: 100%;
+            max-width: 100%;
+            max-height: 65vh;
+            display: block;
+            margin: 0 auto;
+            border-radius: 6px;
+        }
+        .preview-modal-body .preview-folder-summary,
+        .preview-modal-body > div[style*="text-align: center;"] {
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* === Loading Overlay === */
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            color: var(--aero-primary);
+            backdrop-filter: blur(5px);
+        }
+
+        /* === Checkbox Container === */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            z-index: 2;
+        }
+        .checkbox-container input {
+            margin: 0;
+            transform: scale(1.1);
+        }
+        .folder:hover .checkbox-container, .file-item:hover .checkbox-container,
+        .folder.selected .checkbox-container, .file-item.selected .checkbox-container {
+            opacity: 1;
         }
     </style>
 </head>
-
 <body>
     <div class="container">
         <div class="loading-overlay" id="loadingOverlay"><span>Loading...</span></div>
@@ -482,49 +624,54 @@
             <h1 id="page-title"></h1>
             <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
-        <!-- Add to HTML -->
-        <div class="controls">
 
-        <div id="navigation-bar"></div>
-
-        <!-- Two-Panel Layout -->
         <div class="main-content">
-            <!-- Left Panel: File System -->
-            <div class="left-panel">
-                <div class="controls">
-                    <div class="btn-group" style="display: flex; gap: 10px;">
+            <!-- Sidebar (Storage Info) -->
+            <div class="sidebar">
+                <div class="storage-widget-header" id="storageWidgetHeader">
+                    <span>Storage Overview</span>
+                    <span id="usagePercent">0%</span>
+                    <span id="storageWidgetToggle" class="storage-widget-toggle collapsed">▲</span>
+                </div>
+                <div class="storage-widget-content collapsed" id="storageWidgetContent">
+                    <div id="storageChartContainer">
+                        <canvas id="storageDonut"></canvas>
+                    </div>
+                    <div class="storage-summary" id="storageSummary"></div>
+                </div>
+                <div class="folder-tree" id="folderTree">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- File Explorer -->
+            <div class="file-explorer">
+                <div class="explorer-toolbar">
+                    <div class="btn-group">
                         <button class="btn" id="backBtn">← Back</button>
                         <button class="btn" id="openModalBtn">+ Upload</button>
                         <button class="btn" id="createFolderBtn">📁 New Folder</button>
-<button class="btn" id="exportZipBtn">📦 Export Selected as ZIP</button>
+                        <button class="btn" id="exportZipBtn">📦 Export ZIP</button>
                     </div>
                     <div class="search-filter">
-                        <input type="text" id="searchInput" placeholder="Search files (all folders)..." />
+                        <input type="text" id="searchInput" placeholder="Search files..." />
                         <select id="filterSelect">
                             <option value="all">All Files</option>
                             <option value="folders">Folders</option>
                             <option value="images">Images</option>
-                            <option value="documents">Documents (.txt, .pdf, .md)</option>
+                            <option value="documents">Documents</option>
                             <option value="videos">Videos</option>
                             <option value="audio">Audio</option>
                             <option value="archives">Archives</option>
                         </select>
                     </div>
                 </div>
-                <div class="drop-zone" id="dropZone">
-                    Drag & Drop files here to upload
-                </div>
+                <div class="drop-zone" id="dropZone">Drag & Drop files here</div>
                 <div id="fileList"></div>
-            </div>
-            <!-- Right Panel: Preview -->
-            <div class="right-panel">
-                <h3 class="preview-header" id="previewHeader">Welcome</h3>
-                <div class="preview-content" id="previewContent">
-                    <div class="preview-empty">Select a file or folder to preview</div>
-                </div>
             </div>
         </div>
     </div>
+
     <!-- Upload Modal -->
     <div class="modal" id="uploadModal">
         <div class="modal-content">
@@ -537,718 +684,582 @@
             <button class="btn" id="uploadBtn">Upload</button>
         </div>
     </div>
-    
- <script>
-    const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
-    const { createClient } = supabase;
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const BUCKET_NAME = 'uploads';
 
-    // DOM Elements
-    const backBtn = document.getElementById('backBtn');
-    const openModalBtn = document.getElementById('openModalBtn');
-    const createFolderBtn = document.getElementById('createFolderBtn');
-    const exportZipBtn = document.getElementById('exportZipBtn');
-    const uploadModal = document.getElementById('uploadModal');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const fileInput = document.getElementById('fileInput');
-    const folderSelect = document.getElementById('folderSelect');
-    const fileList = document.getElementById('fileList');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    const dropZone = document.getElementById('dropZone');
-    const searchInput = document.getElementById('searchInput');
-    const filterSelect = document.getElementById('filterSelect');
+    <!-- Preview Modal -->
+    <div id="previewModal">
+        <div class="preview-modal-content">
+            <div class="preview-modal-header">
+                <span id="previewModalTitle">Preview</span>
+                <span class="preview-modal-close" id="previewModalClose">&times;</span>
+            </div>
+            <div class="preview-modal-body" id="previewModalBody">
+                <!-- Preview content will be injected here -->
+            </div>
+        </div>
+    </div>
 
-    // Preview Elements
-    const previewHeader = document.getElementById('previewHeader');
-    const previewContent = document.getElementById('previewContent');
+    <script>
+        // === Supabase Configuration ===
+        const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const BUCKET_NAME = 'uploads';
 
-    let currentUser = null;
-    let fileSystem = {};
-    let currentPath = 'root';
-    let selectedFile = null;
-    let allFiles = [];
-    let isNavigatingFromHistory = false;
+        // === Constants ===
+        const STORAGE_LIMIT_GB = 1;
+        const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
 
-    // Bulk Selection
-    let selectedItems = new Set(); // Store selected file/folder paths
+        // === DOM Elements ===
+        const backBtn = document.getElementById('backBtn');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const createFolderBtn = document.getElementById('createFolderBtn');
+        const exportZipBtn = document.getElementById('exportZipBtn');
+        const uploadModal = document.getElementById('uploadModal');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const folderSelect = document.getElementById('folderSelect');
+        const fileList = document.getElementById('fileList');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const dropZone = document.getElementById('dropZone');
+        const searchInput = document.getElementById('searchInput');
+        const filterSelect = document.getElementById('filterSelect');
 
-    function showLoader(message = 'Loading...') {
-        loadingOverlay.firstElementChild.textContent = message;
-        loadingOverlay.style.display = 'flex';
-    }
+        // Preview Modal Elements
+        const previewModal = document.getElementById('previewModal');
+        const previewModalTitle = document.getElementById('previewModalTitle');
+        const previewModalBody = document.getElementById('previewModalBody');
+        const previewModalClose = document.getElementById('previewModalClose');
 
-    function hideLoader() {
-        loadingOverlay.style.display = 'none';
-    }
-    function checkScreenSize() {
-    if (window.innerWidth < 768 && isWidgetOpen) {
-        storageWidget.style.maxHeight = '40px';
-        storageWidgetToggle.textContent = '📊';
-        isWidgetOpen = false;
-    }
-}
-window.addEventListener('resize', checkScreenSize);
-checkScreenSize();
-    document.addEventListener('DOMContentLoaded', async () => {
-        const pageTitle = document.getElementById('page-title');
-        const quotes = [
-            "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
-            "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
-            "\"Happiness depends upon ourselves.\"", "\"Act, don't react.\"", "\"The obstacle is the way.\"",
-            "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
-        ];
-        const randomIndex = Math.floor(Math.random() * quotes.length);
-        pageTitle.textContent = quotes[randomIndex];
+        // Storage Widget Elements
+        const storageWidgetHeader = document.getElementById('storageWidgetHeader');
+        const storageWidgetContent = document.getElementById('storageWidgetContent');
+        const storageWidgetToggle = document.getElementById('storageWidgetToggle');
 
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        if (error || !session) {
-            window.location.href = 'login.html';
-            return;
+        // === Global State ===
+        let currentUser = null;
+        let fileSystem = {}; // Tree structure of files/folders
+        let currentPath = 'root'; // Current path in the file system
+        let selectedFile = null; // Currently selected file (for preview)
+        let allFiles = []; // Flat list of all files/folders from DB
+        let isNavigatingFromHistory = false; // Flag for back/forward navigation
+        let selectedItems = new Set(); // Paths of items selected for bulk actions
+        let storageChart; // Chart.js instance for storage visualization
+
+        // === Utility Functions ===
+        function showLoader(message = 'Loading...') {
+            loadingOverlay.firstElementChild.textContent = message;
+            loadingOverlay.style.display = 'flex';
         }
-        currentUser = session.user;
 
-        initializeBrowserHistory();
-        await refreshFileSystem();
-    });
+        function hideLoader() {
+            loadingOverlay.style.display = 'none';
+        }
 
-    // STORAGE USAGE
-    const STORAGE_LIMIT_GB = 1;
-    const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024;
+        function formatBytes(bytes) {
+            if (!bytes) return '0 Bytes';
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+        }
 
-    function formatBytes(bytes, decimals = 2) {
-        if (!bytes || bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
+        // === Storage Widget Management ===
+        function updateStorageWidget(fileListData) {
+            if (!Array.isArray(fileListData)) return;
 
-    function updateUsageMeter(fileListData) {
-    const usageText = document.getElementById('usageText');
-    const usageProgressBar = document.getElementById('usageProgressBar');
-    const totalUsage = fileListData
-        .filter(item => !item.is_folder && item.size)
-        .reduce((sum, item) => sum + item.size, 0);
+            // Calculate total storage used
+            const totalUsage = fileListData
+                .filter(f => !f.is_folder && f.size)
+                .reduce((sum, f) => sum + Number(f.size || 0), 0);
+            const usagePercent = ((totalUsage / STORAGE_LIMIT_BYTES) * 100).toFixed(1);
 
-    const usagePercentage = (totalUsage / STORAGE_LIMIT_BYTES) * 100;
-    usageText.textContent = `${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB Used`;
-    usageProgressBar.style.width = `${Math.min(usagePercentage, 100)}%`;
+            // Update usage percentage display
+            document.getElementById('usagePercent').textContent = usagePercent + "%";
 
-    // Render chart
-    renderStorageChart(fileListData);
-}
-    let storageChart = null; // Global reference
-
-
-function renderStorageChart(fileListData) {
-    const ctx = document.getElementById('storageChart').getContext('2d');
-
-    // Define file type categories
-    const categories = {
-        Images: /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i,
-        Documents: /\.(pdf|txt|md|docx?|pptx?|xlsx?)$/i,
-        Videos: /\.(mp4|webm|ogg|mov|mkv|avi)$/i,
-        Audio: /\.(mp3|wav|ogg|aac|m4a|flac)$/i,
-        Archives: /\.(zip|rar|7z|tar|gz|bz2)$/i,
-        Code: /\.(js|ts|py|java|cpp|c|h|html|css|json|xml|yml|yaml)$/i,
-        Other: true // Fallback
-    };
-
-    const usage = {};
-    Object.keys(categories).forEach(type => (usage[type] = 0));
-
-    fileListData
-        .filter(item => !item.is_folder && item.size)
-        .forEach(file => {
-            const name = file.name.toLowerCase();
-            let matched = false;
-            for (const [type, regex] of Object.entries(categories)) {
-                if (type === 'Other') continue;
-                if (regex.test(name)) {
-                    usage[type] += file.size;
-                    matched = true;
-                    break;
+            // Update Donut Chart (Used vs Free)
+            const ctx = document.getElementById('storageDonut').getContext('2d');
+            if (storageChart) storageChart.destroy(); // Destroy previous chart
+            storageChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Used', 'Free'],
+                    datasets: [{
+                        data: [totalUsage, Math.max(STORAGE_LIMIT_BYTES - totalUsage, 0)],
+                        backgroundColor: ['#0078d7', '#dfe6eb']
+                    }]
+                },
+                options: {
+                    cutout: '70%', // Creates the donut effect
+                    plugins: { legend: { display: false } } // Hide legend
                 }
-            }
-            if (!matched) usage['Other'] += file.size;
-        });
-
-    // Prepare data for Chart.js
-    const labels = Object.keys(usage).filter(type => usage[type] > 0);
-    const data = labels.map(type => usage[type]);
-    const colors = [
-        '#4CAF50', '#2196F3', '#FF9800', '#E91E63',
-        '#9C27B0', '#607D8B', '#FFEB3B'
-    ].slice(0, labels.length);
-
-    // Destroy old chart if exists
-    if (storageChart) {
-        storageChart.destroy();
-    }
-
-    storageChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Storage Usage (Bytes)',
-                data: data,
-                backgroundColor: colors,
-                borderColor: colors.map(c => c + '55'),
-                borderWidth: 1
-            }]
-        },
-        options: {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-        legend: { display: false },
-        tooltip: {
-            bodyFont: { size: 12 },
-            titleFont: { size: 13 },
-            callbacks: {
-                label: function(tooltipItem) {
-                    const bytes = tooltipItem.raw;
-                    return ` ${formatBytes(bytes)}`;
-                }
-            }
-        }
-    },
-    scales: {
-        x: {
-            ticks: { font: { size: 10 } },
-            title: { display: false }
-        },
-        y: {
-            ticks: { font: { size: 11 } }
-        }
-    }
-}
-    });
-}
-
-    async function refreshFileSystem() {
-        showLoader('Fetching files...');
-        try {
-            const { data, error } = await supabaseClient
-                .from('files')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('is_folder', { ascending: false })
-                .order('name', { ascending: true });
-
-            if (error) throw error;
-
-            allFiles = data;
-            updateUsageMeter(data);
-            fileSystem = buildFileSystemTree(data);
-
-            if (currentPath !== 'root' && !findNodeByPath(currentPath, fileSystem)) {
-                navigateTo('root');
-            } else {
-                navigateTo(currentPath);
-            }
-        } catch (error) {
-            console.error('Error fetching file system:', error);
-            alert('Could not load your files.');
-        } finally {
-            hideLoader();
-        }
-    }
-
-    function buildFileSystemTree(flatList) {
-        const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
-        const nodeMap = { "root": rootNode };
-
-        flatList.forEach(item => {
-            item.children = item.is_folder ? [] : null;
-            nodeMap[item.path] = item;
-        });
-
-        flatList.forEach(item => {
-            const parent = nodeMap[item.parent_path];
-            if (parent) parent.children.push(item);
-        });
-
-        return rootNode;
-    }
-
-    function findNodeByPath(path, tree) {
-        if (path === 'root') return tree;
-        const parts = path.split('/').slice(1);
-        let currentNode = tree;
-        for (const part of parts) {
-            const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
-            if (nextNode) currentNode = nextNode;
-            else return null;
-        }
-        return currentNode;
-    }
-
-    function initializeBrowserHistory() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const initialPath = urlParams.get('path') || 'root';
-        currentPath = initialPath;
-
-        const initialState = { path: currentPath, page: 'fileStorage' };
-        history.replaceState(initialState, '', `?path=${encodeURIComponent(currentPath)}`);
-
-        window.addEventListener('popstate', (event) => {
-            if (event.state && event.state.page === 'fileStorage') {
-                isNavigatingFromHistory = true;
-                navigateTo(event.state.path);
-            } else {
-                window.location.href = 'login.html';
-            }
-        });
-    }
-
-    function navigateTo(path) {
-        const oldPath = currentPath;
-        currentPath = path;
-        selectedFile = null;
-        selectedItems.clear();
-
-        if (!isNavigatingFromHistory) {
-            const state = { path: currentPath, page: 'fileStorage' };
-            const url = `?path=${encodeURIComponent(currentPath)}`;
-            history.pushState(state, '', url);
-        } else {
-            isNavigatingFromHistory = false;
-        }
-
-        renderView();
-        backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
-    }
-
-    function renderView() {
-        renderNavBar();
-        renderFileList();
-        renderPreview();
-    }
-
-    function renderNavBar() {
-        const navBar = document.getElementById('navigation-bar');
-        navBar.innerHTML = '';
-        const parts = currentPath.split('/');
-        let pathSoFar = '';
-        parts.forEach((part, index) => {
-            pathSoFar += (index > 0 ? '/' : '') + part;
-            if (index > 0) {
-                const separator = document.createElement('span');
-                separator.className = 'nav-separator';
-                separator.textContent = '>';
-                navBar.appendChild(separator);
-            }
-            if (index < parts.length - 1) {
-                const link = document.createElement('a');
-                link.textContent = (part === 'root') ? 'Home' : part;
-                link.className = 'nav-link';
-                link.dataset.path = pathSoFar;
-                link.onclick = () => navigateTo(pathSoFar);
-                navBar.appendChild(link);
-            } else {
-                const current = document.createElement('span');
-                current.textContent = (part === 'root') ? 'Home' : part;
-                current.className = 'nav-current';
-                navBar.appendChild(current);
-            }
-        });
-    }
-
-    function getFilteredFilesForSearch() {
-        let filtered = allFiles;
-        const searchTerm = searchInput.value.toLowerCase();
-        if (searchTerm) {
-            filtered = filtered.filter(item =>
-                item.name.toLowerCase().includes(searchTerm)
-            );
-        }
-        const filterType = filterSelect.value;
-        if (filterType !== 'all') {
-            switch (filterType) {
-                case 'folders':
-                    filtered = filtered.filter(item => item.is_folder);
-                    break;
-                case 'images':
-                    filtered = filtered.filter(item => !item.is_folder && /\.(jpg|jpeg|png|gif)$/i.test(item.name));
-                    break;
-                case 'documents':
-                    filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name));
-                    break;
-                case 'videos':
-                    filtered = filtered.filter(item => !item.is_folder && /\.(mp4|webm|ogg)$/i.test(item.name));
-                    break;
-                case 'audio':
-                    filtered = filtered.filter(item => !item.is_folder && /\.(mp3|wav|ogg)$/i.test(item.name));
-                    break;
-                case 'archives':
-                    filtered = filtered.filter(item => !item.is_folder && /\.(zip|rar|7z|tar|gz)$/i.test(item.name));
-                    break;
-            }
-        }
-        return filtered.sort((a, b) => {
-            if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
-            return a.name.localeCompare(b.name);
-        });
-    }
-
-    function renderFileList() {
-        const searchTerm = searchInput.value.trim();
-        const isSearching = searchTerm.length > 0;
-
-        fileList.innerHTML = '';
-
-        if (isSearching) {
-            const results = getFilteredFilesForSearch();
-            if (results.length === 0) {
-                fileList.innerHTML = '<p style="color: #999; text-align: center; margin-top: 20px;">No files found matching your search.</p>';
-                return;
-            }
-            results.forEach(item => {
-                renderFileItem(item);
             });
-        } else {
-            const node = findNodeByPath(currentPath, fileSystem);
-            if (!node) {
-                fileList.innerHTML = '<p>Folder not found.</p>';
-                return;
+
+            // Count file types for summary
+            const counts = {
+                Folders: fileListData.filter(f => f.is_folder).length,
+                Images: fileListData.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)).length,
+                Documents: fileListData.filter(f => /\.(pdf|txt|docx?|pptx?|xlsx?)$/i.test(f.name)).length,
+                Videos: fileListData.filter(f => /\.(mp4|webm|mkv|avi|mov)$/i.test(f.name)).length,
+                Audio: fileListData.filter(f => /\.(mp3|wav|ogg|aac|flac)$/i.test(f.name)).length,
+                Archives: fileListData.filter(f => /\.(zip|rar|7z|tar|gz)$/i.test(f.name)).length
+            };
+
+            // Update summary text
+            const summaryDiv = document.getElementById('storageSummary');
+            summaryDiv.innerHTML = `
+                <p><span>Total Files:</span><span>${fileListData.filter(f => !f.is_folder).length}</span></p>
+                <p><span>Total Folders:</span><span>${counts.Folders}</span></p>
+                <p><span>Images:</span><span>${counts.Images}</span></p>
+                <p><span>Documents:</span><span>${counts.Documents}</span></p>
+                <p><span>Videos:</span><span>${counts.Videos}</span></p>
+                <p><span>Audio:</span><span>${counts.Audio}</span></p>
+                <p><span>Archives:</span><span>${counts.Archives}</span></p>
+                <p><span>Used:</span><span>${formatBytes(totalUsage)} / ${STORAGE_LIMIT_GB} GB</span></p>
+            `;
+        }
+
+        // === File System Operations ===
+        async function refreshFileSystem() {
+            showLoader('Fetching files...');
+            try {
+                // Fetch all files for the current user
+                const { data, error } = await supabaseClient
+                    .from('files')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .order('is_folder', { ascending: false }) // Folders first
+                    .order('name', { ascending: true }); // Then alphabetically
+
+                if (error) throw error;
+
+                allFiles = data; // Store flat list
+                updateStorageWidget(data); // Update storage display
+
+                // Build tree structure for navigation
+                fileSystem = buildFileSystemTree(data);
+
+                // Navigate to current path, or root if path is invalid
+                if (currentPath !== 'root' && !findNodeByPath(currentPath, fileSystem)) {
+                    navigateTo('root');
+                } else {
+                    navigateTo(currentPath);
+                }
+            } catch (error) {
+                console.error('Error fetching file system:', error);
+                alert('Could not load your files.');
+            } finally {
+                hideLoader();
             }
-            const items = node.children || [];
-            if (items.length === 0) {
-                fileList.innerHTML = '<p style="color: #999; text-align: center;">This folder is empty.</p>';
-                return;
+        }
+
+        function buildFileSystemTree(flatList) {
+            // Create root node
+            const rootNode = { name: "root", path: "root", is_folder: true, children: [] };
+            const nodeMap = { "root": rootNode };
+
+            // Add all items to map
+            flatList.forEach(item => {
+                item.children = item.is_folder ? [] : null;
+                nodeMap[item.path] = item;
+            });
+
+            // Link children to parents
+            flatList.forEach(item => {
+                const parent = nodeMap[item.parent_path];
+                if (parent) parent.children.push(item);
+            });
+
+            return rootNode;
+        }
+
+        function findNodeByPath(path, tree) {
+            if (path === 'root') return tree;
+            const parts = path.split('/').slice(1);
+            let currentNode = tree;
+            for (const part of parts) {
+                const nextNode = currentNode.children.find(child => child.is_folder && child.name === part);
+                if (nextNode) currentNode = nextNode;
+                else return null;
             }
-            items.forEach(item => {
-                renderFileItem(item);
+            return currentNode;
+        }
+
+        // === Navigation & History ===
+        function initializeBrowserHistory() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialPath = urlParams.get('path') || 'root';
+            currentPath = initialPath;
+
+            // Set initial state in history
+            const initialState = { path: currentPath, page: 'fileStorage' };
+            history.replaceState(initialState, '', `?path=${encodeURIComponent(currentPath)}`);
+
+            // Handle back/forward navigation
+            window.addEventListener('popstate', (event) => {
+                if (event.state && event.state.page === 'fileStorage') {
+                    isNavigatingFromHistory = true;
+                    navigateTo(event.state.path);
+                } else {
+                    window.location.href = 'login.html'; // Redirect if not our page
+                }
             });
         }
-    }
 
-    function renderFileItem(item) {
-        const container = document.createElement('div');
-        container.className = item.is_folder ? 'folder' : 'file-item';
-        container.dataset.path = item.path;
+        function navigateTo(path) {
+            currentPath = path;
+            selectedFile = null;
+            selectedItems.clear(); // Clear bulk selection on navigation
 
-        // Checkbox
-        const checkboxContainer = document.createElement('div');
-        checkboxContainer.className = 'checkbox-container';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = selectedItems.has(item.path);
-        checkbox.addEventListener('change', (e) => {
-            e.stopPropagation();
-            if (checkbox.checked) {
-                selectedItems.add(item.path);
+            // Update browser history if not navigating from it
+            if (!isNavigatingFromHistory) {
+                const state = { path: currentPath, page: 'fileStorage' };
+                const url = `?path=${encodeURIComponent(currentPath)}`;
+                history.pushState(state, '', url);
             } else {
-                selectedItems.delete(item.path);
+                isNavigatingFromHistory = false;
             }
-        });
-        checkboxContainer.appendChild(checkbox);
-        container.appendChild(checkboxContainer);
 
-        // Preview container
-        const previewContainer = document.createElement('div');
-        previewContainer.className = 'file-preview-container';
+            // Re-render the view
+            renderView();
 
-        const thumbnail = document.createElement('div');
-        const fileName = item.name.toLowerCase();
-
-        if (item.is_folder) {
-            const icon = document.createElement('span');
-            icon.className = 'folder-icon';
-            icon.textContent = '📁';
-            thumbnail.appendChild(icon);
-        } else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
-            const img = document.createElement('img');
-            img.className = 'thumbnail';
-            img.alt = item.name;
-            img.loading = "lazy";
-            const storagePath = `${currentUser.id}/${item.path}`;
-            const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-            if (data?.publicUrl) img.src = data.publicUrl;
-            else img.src = 'https://via.placeholder.com/60?text=img';
-            img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
-            thumbnail.appendChild(img);
-        } else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
-            const videoThumb = document.createElement('div');
-            videoThumb.className = 'thumbnail-placeholder';
-            videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
-            thumbnail.appendChild(videoThumb);
-        } else if (fileName.endsWith('.pdf')) {
-            const pdfThumb = document.createElement('div');
-            pdfThumb.className = 'thumbnail-placeholder';
-            pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
-            thumbnail.appendChild(pdfThumb);
-        } else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
-            const audioThumb = document.createElement('div');
-            audioThumb.className = 'thumbnail-placeholder';
-            audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
-            thumbnail.appendChild(audioThumb);
-        } else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
-            const archiveThumb = document.createElement('div');
-            archiveThumb.className = 'thumbnail-placeholder';
-            archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
-            thumbnail.appendChild(archiveThumb);
-        } else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
-            const textThumb = document.createElement('div');
-            textThumb.className = 'thumbnail-placeholder';
-            textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
-            thumbnail.appendChild(textThumb);
-        } else {
-            const fallbackThumb = document.createElement('div');
-            fallbackThumb.className = 'thumbnail-placeholder';
-            fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
-            thumbnail.appendChild(fallbackThumb);
+            // Show/hide back button based on location
+            if (backBtn) {
+                backBtn.style.display = currentPath === 'root' ? 'none' : 'inline-block';
+            }
         }
 
-        previewContainer.appendChild(thumbnail);
-        const content = document.createElement('h3');
-        content.textContent = item.name;
-        previewContainer.appendChild(content);
-        container.appendChild(previewContainer);
+        // === Rendering Functions ===
+        function renderView() {
+            renderNavBar(); // Update navigation breadcrumbs
+            renderFileList(); // Update file/folder list
+            renderFolderTree(); // Update folder tree sidebar
+        }
 
-        // Actions
-        const actions = document.createElement('div');
-        actions.className = 'actions';
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'rename-btn';
-        renameBtn.textContent = 'Rename';
-        renameBtn.onclick = (e) => {
-            e.stopPropagation();
-            renameItem(item);
-        };
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-btn';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            deleteItem(item);
-        };
-        actions.appendChild(renameBtn);
-        actions.appendChild(deleteBtn);
-        container.appendChild(actions);
+        function renderFolderTree() {
+            const folderTree = document.getElementById('folderTree');
+            if (!folderTree) return;
+            folderTree.innerHTML = '';
 
-        // Click and double-click
-        container.onclick = (e) => {
-            if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
-            selectedFile = item;
-            document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el =>
-                el.classList.remove('selected')
-            );
-            container.classList.add('selected');
-            renderPreview();
-        };
+            // Recursive function to build tree HTML
+            function buildTree(node) {
+                if (!node.is_folder) return '';
+                let html = `<li data-path="${node.path}">📁 ${node.name}`;
+                if (node.children && node.children.length > 0) {
+                    html += '<ul>';
+                    node.children
+                        .filter(child => child.is_folder)
+                        .forEach(child => {
+                            html += buildTree(child);
+                        });
+                    html += '</ul>';
+                }
+                html += '</li>';
+                return html;
+            }
 
-        container.ondblclick = (e) => {
-            if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
+            // Build and inject HTML
+            let html = '<ul>';
+            html += buildTree(fileSystem);
+            html += '</ul>';
+            folderTree.innerHTML = html;
+
+            // Add click listeners for navigation
+            folderTree.querySelectorAll('li').forEach(li => {
+                li.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const path = li.getAttribute('data-path');
+                    navigateTo(path);
+                });
+            });
+        }
+
+        function renderNavBar() {
+            const navBar = document.getElementById('navigation-bar');
+            if (!navBar) return;
+            navBar.innerHTML = '';
+
+            const parts = currentPath.split('/');
+            let pathSoFar = '';
+            parts.forEach((part, index) => {
+                pathSoFar += (index > 0 ? '/' : '') + part;
+                if (index > 0) {
+                    const separator = document.createElement('span');
+                    separator.className = 'nav-separator';
+                    separator.textContent = '>';
+                    navBar.appendChild(separator);
+                }
+                if (index < parts.length - 1) {
+                    const link = document.createElement('a');
+                    link.textContent = (part === 'root') ? 'Home' : part;
+                    link.className = 'nav-link';
+                    link.dataset.path = pathSoFar;
+                    link.onclick = () => navigateTo(pathSoFar);
+                    navBar.appendChild(link);
+                } else {
+                    const current = document.createElement('span');
+                    current.textContent = (part === 'root') ? 'Home' : part;
+                    current.className = 'nav-current';
+                    navBar.appendChild(current);
+                }
+            });
+        }
+
+        function getFilteredFilesForSearch() {
+            let filtered = allFiles;
+            const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+            if (searchTerm) {
+                filtered = filtered.filter(item =>
+                    item.name.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            const filterType = filterSelect ? filterSelect.value : 'all';
+            if (filterType !== 'all') {
+                switch (filterType) {
+                    case 'folders': filtered = filtered.filter(item => item.is_folder); break;
+                    case 'images': filtered = filtered.filter(item => !item.is_folder && /\.(jpg|jpeg|png|gif)$/i.test(item.name)); break;
+                    case 'documents': filtered = filtered.filter(item => !item.is_folder && /\.txt$/i.test(item.name)); break;
+                    case 'videos': filtered = filtered.filter(item => !item.is_folder && /\.(mp4|webm|ogg)$/i.test(item.name)); break;
+                    case 'audio': filtered = filtered.filter(item => !item.is_folder && /\.(mp3|wav|ogg)$/i.test(item.name)); break;
+                    case 'archives': filtered = filtered.filter(item => !item.is_folder && /\.(zip|rar|7z|tar|gz)$/i.test(item.name)); break;
+                }
+            }
+
+            // Sort: folders first, then alphabetically
+            return filtered.sort((a, b) => {
+                if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+        }
+
+        function renderFileList() {
+            if (!fileList) return;
+            const searchTerm = searchInput ? searchInput.value.trim() : '';
+            const isSearching = searchTerm.length > 0;
+            fileList.innerHTML = '';
+
+            if (isSearching) {
+                const results = getFilteredFilesForSearch();
+                if (results.length === 0) {
+                    fileList.innerHTML = '<p style="color: #999; text-align: center; margin-top: 20px;">No files found matching your search.</p>';
+                    return;
+                }
+                results.forEach(item => renderFileItem(item));
+            } else {
+                const node = findNodeByPath(currentPath, fileSystem);
+                if (!node) {
+                    fileList.innerHTML = '<p>Folder not found.</p>';
+                    return;
+                }
+                const items = node.children || [];
+                if (items.length === 0) {
+                    fileList.innerHTML = '<p style="color: #999; text-align: center;">This folder is empty.</p>';
+                    return;
+                }
+                items.forEach(item => renderFileItem(item));
+            }
+        }
+
+        function renderFileItem(item) {
+            if (!fileList) return;
+            const container = document.createElement('div');
+            container.className = item.is_folder ? 'folder' : 'file-item';
+            container.dataset.path = item.path;
+
+            // Checkbox for bulk selection
+            const checkboxContainer = document.createElement('div');
+            checkboxContainer.className = 'checkbox-container';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = selectedItems.has(item.path);
+            checkbox.addEventListener('change', (e) => {
+                e.stopPropagation();
+                if (checkbox.checked) {
+                    selectedItems.add(item.path);
+                } else {
+                    selectedItems.delete(item.path);
+                }
+            });
+            checkboxContainer.appendChild(checkbox);
+            container.appendChild(checkboxContainer);
+
+            // File/Folder preview container
+            const previewContainer = document.createElement('div');
+            previewContainer.className = 'file-preview-container';
+
+            const thumbnail = document.createElement('div');
+            const fileName = item.name.toLowerCase();
+
             if (item.is_folder) {
-                navigateTo(item.path);
-            } else {
+                const icon = document.createElement('span');
+                icon.className = 'folder-icon';
+                icon.textContent = '📁';
+                thumbnail.appendChild(icon);
+            } else if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(fileName)) {
+                const img = document.createElement('img');
+                img.className = 'thumbnail';
+                img.alt = item.name;
+                img.loading = "lazy";
                 const storagePath = `${currentUser.id}/${item.path}`;
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
-                if (data?.publicUrl) {
-                    window.open(data.publicUrl, '_blank');
-                }
-            }
-        };
-
-        fileList.appendChild(container);
-    }
-
-    // === BULK ZIP EXPORT ===
-    exportZipBtn.addEventListener('click', async () => {
-        if (selectedItems.size === 0) {
-            alert("Please select at least one file or folder to export.");
-            return;
-        }
-        await downloadSelectedAsZip();
-    });
-
-    async function downloadSelectedAsZip() {
-    showLoader(`Creating ZIP with ${selectedItems.size} items...`);
-    const zip = new JSZip();
-
-    try {
-        const promises = Array.from(selectedItems).map(async (path) => {
-            const item = allFiles.find(f => f.path === path);
-            if (!item) return;
-
-            if (item.is_folder) {
-                const folderNode = findNodeByPath(path, fileSystem);
-                await addFolderToZip(zip, folderNode, item.name);
+                if (data?.publicUrl) img.src = data.publicUrl;
+                else img.src = 'https://via.placeholder.com/60?text=img';
+                img.onerror = () => { img.src = 'https://via.placeholder.com/60?text=err'; };
+                thumbnail.appendChild(img);
+            } else if (/\.(mp4|webm|ogg|mov|mkv)$/.test(fileName)) {
+                const videoThumb = document.createElement('div');
+                videoThumb.className = 'thumbnail-placeholder';
+                videoThumb.innerHTML = `<div style="text-align:center;">▶<br><small>Video</small></div>`;
+                thumbnail.appendChild(videoThumb);
+            } else if (fileName.endsWith('.pdf')) {
+                const pdfThumb = document.createElement('div');
+                pdfThumb.className = 'thumbnail-placeholder';
+                pdfThumb.innerHTML = `<div style="font-size:24px;">📄</div><small>PDF</small>`;
+                thumbnail.appendChild(pdfThumb);
+            } else if (/\.(mp3|wav|ogg|aac|m4a)$/.test(fileName)) {
+                const audioThumb = document.createElement('div');
+                audioThumb.className = 'thumbnail-placeholder';
+                audioThumb.innerHTML = `<div style="font-size:24px;">🎵</div><small>Audio</small>`;
+                thumbnail.appendChild(audioThumb);
+            } else if (/\.(zip|rar|7z|tar|gz)$/.test(fileName)) {
+                const archiveThumb = document.createElement('div');
+                archiveThumb.className = 'thumbnail-placeholder';
+                archiveThumb.innerHTML = `<div style="font-size:24px;">📦</div><small>ZIP</small>`;
+                thumbnail.appendChild(archiveThumb);
+            } else if (/\.(txt|md|json|js|css|html|py|java|ts|yml)$/.test(fileName)) {
+                const textThumb = document.createElement('div');
+                textThumb.className = 'thumbnail-placeholder';
+                textThumb.innerHTML = `<div style="font-size:24px;">📝</div><small>${fileName.split('.').pop()}</small>`;
+                thumbnail.appendChild(textThumb);
             } else {
-                const storagePath = `${currentUser.id}/${item.path}`;
-                const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
-                if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
-                // downloadData is already a Blob, no need to call .blob()
-                zip.file(item.name, downloadData);
+                const fallbackThumb = document.createElement('div');
+                fallbackThumb.className = 'thumbnail-placeholder';
+                fallbackThumb.innerHTML = `<div style="font-size:24px;">📁</div><small>File</small>`;
+                thumbnail.appendChild(fallbackThumb);
             }
-        });
 
-        await Promise.all(promises);
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(zipBlob);
-        link.download = `export_${new Date().toISOString().slice(0, 10)}.zip`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-    } catch (error) {
-        console.error('ZIP creation failed:', error);
-        alert('Failed to create ZIP file: ' + error.message);
-    } finally {
-        hideLoader();
-    }
-}
+            previewContainer.appendChild(thumbnail);
 
-    async function addFolderToZip(zipFolder, node, folderName) {
-    const dir = zipFolder.folder(folderName);
-    for (const item of node.children) {
-        if (item.is_folder) {
-            const subNode = findNodeByPath(item.path, fileSystem);
-            await addFolderToZip(dir, subNode, item.name);
-        } else {
-            const storagePath = `${currentUser.id}/${item.path}`;
-            const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
-            if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
-            dir.file(item.name, downloadData); // downloadData is Blob
+            const content = document.createElement('h3');
+            content.textContent = item.name;
+            previewContainer.appendChild(content);
+            container.appendChild(previewContainer);
+
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+            const renameBtn = document.createElement('button');
+            renameBtn.className = 'rename-btn';
+            renameBtn.textContent = 'Rename';
+            renameBtn.onclick = (e) => { e.stopPropagation(); renameItem(item); };
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item); };
+            actions.appendChild(renameBtn);
+            actions.appendChild(deleteBtn);
+            container.appendChild(actions);
+
+            // Single click: Select item
+            container.onclick = (e) => {
+                if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
+                selectedFile = item;
+                document.querySelectorAll('.folder.selected, .file-item.selected').forEach(el => el.classList.remove('selected'));
+                container.classList.add('selected');
+                // Preview is now only on double-click
+            };
+
+            // Double click: Open folder or preview file
+            container.ondblclick = (e) => {
+                if (e.target === renameBtn || e.target === deleteBtn || e.target === checkbox) return;
+                if (item.is_folder) {
+                    navigateTo(item.path);
+                } else {
+                    showPreviewModal(item);
+                }
+            };
+
+            fileList.appendChild(container);
         }
-    }
-}
 
-    // === REST OF YOUR FUNCTIONS ===
-    function renderPreview() {
-        if (!selectedFile) {
-            const node = findNodeByPath(currentPath, fileSystem);
-            if (!node) return;
-            previewHeader.textContent = `Contents of "${node.name}"`;
-            previewContent.innerHTML = '';
-            if (node.children.length === 0) {
-                previewContent.innerHTML = '<p><em>No items in this folder.</em></p>';
+        // === Preview Modal ===
+        function showPreviewModal(item) {
+            if (item.is_folder) {
+                console.warn("Attempted to preview a folder.");
                 return;
             }
-            const ul = document.createElement('ul');
-            node.children.forEach(item => {
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${item.is_folder ? '📁' : '📄'}</strong> ${item.name}`;
-                if (!item.is_folder && item.size) {
-                    li.innerHTML += ` <span style="color: #888;">(${formatBytes(item.size)})</span>`;
-                }
-                ul.appendChild(li);
-            });
-            previewContent.appendChild(ul);
-            return;
-        }
+            if (!previewModal || !previewModalTitle || !previewModalBody) return;
 
-        previewHeader.textContent = selectedFile.name;
-        previewContent.innerHTML = '';
+            previewModalTitle.textContent = item.name;
+            previewModalBody.innerHTML = ''; // Clear previous content
 
-        if (selectedFile.is_folder) {
-            const summary = document.createElement('div');
-            summary.className = 'preview-folder-summary';
-            const folderNode = findNodeByPath(selectedFile.path, fileSystem);
-            const fileCount = folderNode.children.filter(f => !f.is_folder).length;
-            const folderCount = folderNode.children.filter(f => f.is_folder).length;
-            summary.innerHTML = `
-                <p><strong>Type:</strong> Folder</p>
-                <p><strong>Path:</strong> ${selectedFile.path}</p>
-                <p><strong>Contains:</strong> ${folderCount} folders, ${fileCount} files</p>
-            `;
-            previewContent.appendChild(summary);
-        } else {
-            const storagePath = `${currentUser.id}/${selectedFile.path}`;
-            const fileName = selectedFile.name.toLowerCase();
+            const storagePath = `${currentUser.id}/${item.path}`;
+            const fileName = item.name.toLowerCase();
 
             if (/\.(jpg|jpeg|png|gif|bmp|svg|webp)$/i.test(fileName)) {
                 const img = document.createElement('img');
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                 if (data?.publicUrl) {
                     img.src = data.publicUrl;
-                    img.alt = selectedFile.name;
-                    img.style.maxWidth = '100%';
-                    img.style.height = 'auto';
-                    img.style.borderRadius = '6px';
-                    img.style.border = '1px solid #ddd';
+                    img.alt = item.name;
                     img.onerror = () => {
                         const errorMsg = document.createElement('p');
                         errorMsg.textContent = 'Could not load image.';
                         errorMsg.style.color = '#999';
-                        previewContent.appendChild(errorMsg);
+                        previewModalBody.appendChild(errorMsg);
                     };
-                    previewContent.appendChild(img);
+                    previewModalBody.appendChild(img);
                 } else {
-                    previewContent.innerHTML = '<p style="color: #999;">Could not load image.</p>';
+                    previewModalBody.innerHTML = '<p style="color: #999;">Could not load image.</p>';
                 }
             } else if (fileName.endsWith('.pdf')) {
                 const iframe = document.createElement('iframe');
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                 if (data?.publicUrl) {
                     iframe.src = data.publicUrl;
-                    iframe.style.width = '100%';
-                    iframe.style.height = '500px';
-                    iframe.style.border = 'none';
-                    iframe.style.borderRadius = '6px';
-                    previewContent.appendChild(iframe);
+                    previewModalBody.appendChild(iframe);
                 } else {
-                    previewContent.innerHTML = '<p style="color: #999;">Could not load PDF.</p>';
+                    previewModalBody.innerHTML = '<p style="color: #999;">Could not load PDF.</p>';
                 }
             } else if (/\.(mp4|webm|ogg|avi|mov|mkv)$/i.test(fileName)) {
                 const video = document.createElement('video');
                 video.controls = true;
-                video.style.width = '100%';
-                video.style.maxHeight = '400px';
-                video.style.borderRadius = '6px';
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                 if (data?.publicUrl) {
                     video.src = data.publicUrl;
                     video.onerror = () => {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                        previewModalBody.innerHTML = '<p style="color: #999;">Could not load video.</p>';
                     };
                 } else {
-                    previewContent.innerHTML = '<p style="color: #999;">Could not load video.</p>';
+                    previewModalBody.innerHTML = '<p style="color: #999;">Could not load video.</p>';
                 }
-                previewContent.appendChild(video);
+                previewModalBody.appendChild(video);
             } else if (/\.(mp3|wav|ogg|aac|flac|m4a)$/i.test(fileName)) {
                 const audio = document.createElement('audio');
                 audio.controls = true;
-                audio.style.width = '100%';
-                audio.style.marginTop = '20px';
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                 if (data?.publicUrl) {
                     audio.src = data.publicUrl;
                     audio.onerror = () => {
-                        previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                        previewModalBody.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
                     };
                 } else {
-                    previewContent.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
+                    previewModalBody.innerHTML = '<p style="color: #999;">Could not load audio.</p>';
                 }
                 const audioInfo = document.createElement('div');
                 audioInfo.innerHTML = `
-                    <p><strong>Audio File:</strong> ${selectedFile.name}</p>
-                    <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                    <p><strong>Audio File:</strong> ${item.name}</p>
+                    <p><strong>Size:</strong> ${formatBytes(item.size)}</p>
                 `;
                 audioInfo.style.marginBottom = '15px';
-                previewContent.appendChild(audioInfo);
-                previewContent.appendChild(audio);
+                previewModalBody.appendChild(audioInfo);
+                previewModalBody.appendChild(audio);
             } else if (/\.(txt|md|csv|log|json|js|css|html|xml|py|java|cpp|c|h|php|rb|go|rs|swift|kt|ts|yml|yaml|ini|cfg|conf)$/i.test(fileName)) {
                 const textarea = document.createElement('textarea');
                 textarea.readOnly = true;
-                textarea.style.width = '100%';
-                textarea.style.height = '400px';
-                textarea.style.border = '1px solid #ddd';
-                textarea.style.borderRadius = '4px';
-                textarea.style.padding = '10px';
-                textarea.style.fontFamily = 'Consolas, Monaco, "Courier New", monospace';
-                textarea.style.fontSize = '13px';
-                textarea.style.resize = 'vertical';
                 textarea.textContent = "Loading...";
-                previewContent.appendChild(textarea);
-
+                previewModalBody.appendChild(textarea);
                 supabaseClient.storage.from(BUCKET_NAME).download(storagePath)
                     .then(({ data, error }) => {
                         if (error) throw error;
@@ -1268,370 +1279,467 @@ function renderStorageChart(fileListData) {
             } else {
                 const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(storagePath);
                 const fileExt = fileName.split('.').pop().toUpperCase();
-                previewContent.innerHTML = `
+                previewModalBody.innerHTML = `
                     <div style="text-align: center; padding: 40px;">
                         <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
-                        <p><strong>File:</strong> ${selectedFile.name}</p>
-                        <p><strong>Size:</strong> ${formatBytes(selectedFile.size)}</p>
+                        <p><strong>File:</strong> ${item.name}</p>
+                        <p><strong>Size:</strong> ${formatBytes(item.size)}</p>
                         <p><strong>Type:</strong> ${fileExt}</p>
                         <p style="color: #666; margin: 20px 0;">Preview not available.</p>
-                        <a href="${data?.publicUrl}" download="${selectedFile.name}" target="_blank"
+                        <a href="${data?.publicUrl}" download="${item.name}" target="_blank"
                            style="background: #2e86de; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
                            Download File
                         </a>
                     </div>
                 `;
             }
+            previewModal.style.display = 'block';
         }
-    }
 
-    // === EVENT LISTENERS ===
-    backBtn.addEventListener('click', () => {
-        if (currentPath === 'root') return;
-        const parts = currentPath.split('/');
-        parts.pop();
-        navigateTo(parts.join('/') || 'root');
-    });
-    backBtn.style.display = 'none';
-
-    searchInput.addEventListener('input', renderFileList);
-    filterSelect.addEventListener('change', renderFileList);
-
-    openModalBtn.addEventListener('click', () => {
-        updateFolderSelection();
-        if (folderSelect.querySelector(`option[value="${currentPath}"]`)) {
-            folderSelect.value = currentPath;
-        }
-        uploadModal.style.display = 'flex';
-    });
-
-    document.getElementById('closeModalBtn').onclick = () => {
-        uploadModal.style.display = 'none';
-        resetInputs();
-    };
-
-    createFolderBtn.addEventListener('click', async () => {
-        const folderName = prompt("Enter folder name (cannot contain '/'):");
-        if (!folderName || folderName.includes('/')) {
-            if (folderName) alert("Folder name cannot contain '/'");
-            return;
-        }
-        const parentPath = currentPath;
-        const newPath = `${parentPath}/${folderName}`;
-        showLoader('Creating folder...');
-        try {
-            const { error: insertError } = await supabaseClient.from('files').insert({
-                user_id: currentUser.id,
-                name: folderName,
-                path: newPath,
-                is_folder: true,
-                parent_path: parentPath
-            });
-            if (insertError) throw insertError;
-            await refreshFileSystem();
-        } catch (error) {
-            console.error('Error creating folder:', error);
-            alert('Failed to create folder.');
-        } finally {
-            hideLoader();
-        }
-    });
-
-    async function uploadFiles(files, parentPath) {
-        if (!files.length) return;
-        showLoader(`Uploading ${files.length} file(s)...`);
-        let successCount = 0;
-        let errorCount = 0;
-        for (const file of files) {
-            const finalName = file.name;
-            const newPath = `${parentPath}/${finalName}`;
-            const storagePath = `${currentUser.id}/${newPath}`;
+        // === ZIP Export ===
+        async function downloadSelectedAsZip() {
+            if (selectedItems.size === 0) {
+                alert("Please select at least one file or folder to export.");
+                return;
+            }
+            showLoader(`Creating ZIP with ${selectedItems.size} items...`);
+            const zip = new JSZip();
             try {
-                const { data: existing, error: checkError } = await supabaseClient
-                    .from('files').select('id').eq('parent_path', parentPath).eq('name', finalName).single();
-                if (checkError && checkError.code !== 'PGRST116') throw checkError;
-                if (existing) {
-                    alert(`File "${finalName}" already exists.`);
-                    continue;
-                }
-                const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file);
-                if (uploadError) throw uploadError;
-                const { error: insertError } = await supabaseClient.from('files').insert({
-                    user_id: currentUser.id,
-                    name: finalName,
-                    path: newPath,
-                    is_folder: false,
-                    parent_path: parentPath,
-                    size: file.size
-                });
-                if (insertError) {
-                    await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
-                    throw insertError;
-                }
-                successCount++;
-            } catch (err) {
-                console.error('Upload failed:', err);
-                errorCount++;
-            }
-        }
-        const message = `${successCount} file(s) uploaded successfully.` +
-            (errorCount > 0 ? `\n${errorCount} file(s) failed.` : '');
-        alert(message);
-        uploadModal.style.display = 'none';
-        resetInputs();
-        await refreshFileSystem();
-        hideLoader();
-    }
-
-    uploadBtn.addEventListener('click', () => {
-        const files = fileInput.files;
-        if (!files.length) {
-            alert('Select files first.');
-            return;
-        }
-        uploadFiles(files, folderSelect.value);
-    });
-
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        }, false);
-    });
-    dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
-    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'), false);
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
-    dropZone.addEventListener('drop', (e) => {
-        dropZone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        uploadFiles(files, currentPath);
-    }, false);
-
-    async function renameItem(item) {
-        const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
-        const currentName = item.is_folder ? item.name : nameWithoutExt;
-        const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
-        if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
-            if (newNameRaw) alert("Invalid name or name unchanged.");
-            return;
-        }
-        showLoader('Renaming...');
-        try {
-            if (item.is_folder) {
-                await renameFolder(item, newNameRaw);
-            } else {
-                await renameFile(item, newNameRaw);
-            }
-            await refreshFileSystem();
-        } catch (error) {
-            console.error('Rename failed:', error);
-            alert(`Could not rename item: ${error.message}`);
-        } finally {
-            hideLoader();
-        }
-    }
-
-    async function renameFile(item, newNameRaw) {
-        const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
-        const newName = `${newNameRaw}${ext}`;
-        const { data: existing, error: checkError } = await supabaseClient
-            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
-        if (checkError && checkError.code !== 'PGRST116') throw checkError;
-        if (existing) throw new Error('A file with that name already exists in this folder.');
-        const newPath = `${item.parent_path}/${newName}`;
-        const oldStoragePath = `${currentUser.id}/${item.path}`;
-        const newStoragePath = `${currentUser.id}/${newPath}`;
-        const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
-        if (moveError) throw moveError;
-        const { error: updateError } = await supabaseClient
-            .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
-        if (updateError) {
-            await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
-            throw updateError;
-        }
-    }
-
-    async function renameFolder(item, newName) {
-        const { data: existing, error: checkError } = await supabaseClient
-            .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).eq('is_folder', true).single();
-        if (checkError && checkError.code !== 'PGRST116') throw checkError;
-        if (existing) throw new Error('A folder with that name already exists here.');
-        const oldPath = item.path;
-        const newPath = `${item.parent_path}/${newName}`;
-        const { data: descendants, error: fetchError } = await supabaseClient
-            .from('files').select('*').like('path', `${oldPath}/%`);
-        if (fetchError) throw fetchError;
-        const filesToMove = descendants.filter(d => !d.is_folder);
-        if (filesToMove.length > 0) {
-            const movePromises = filesToMove.map(file => {
-                const fileNewPath = file.path.replace(oldPath, newPath);
-                return supabaseClient.storage.from(BUCKET_NAME).move(
-                    `${currentUser.id}/${file.path}`,
-                    `${currentUser.id}/${fileNewPath}`
-                );
-            });
-            const moveResults = await Promise.all(movePromises);
-            const firstMoveError = moveResults.find(res => res.error);
-            if (firstMoveError) {
-                throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}`);
-            }
-        }
-        const recordsToUpdate = [item, ...descendants].map(record => ({
-            id: record.id,
-            user_id: currentUser.id,
-            name: record.id === item.id ? newName : record.name,
-            path: record.path.replace(oldPath, newPath),
-            parent_path: record.parent_path.replace(oldPath, newPath),
-        }));
-        const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
-        if (updateError) {
-            throw new Error(`Database update failed: ${updateError.message}`);
-        }
-    }
-
-    async function deleteItem(item) {
-        if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
-        showLoader('Deleting...');
-        try {
-            let filesToDeleteFromStorage = [];
-            let recordsToDeleteFromDb = [item.id];
-            if (item.is_folder) {
-                const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
-                if (error) throw error;
-                descendants.forEach(d => {
-                    recordsToDeleteFromDb.push(d.id);
-                    if (!d.is_folder) {
-                        filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
+                const promises = Array.from(selectedItems).map(async (path) => {
+                    const item = allFiles.find(f => f.path === path);
+                    if (!item) return;
+                    if (item.is_folder) {
+                        const folderNode = findNodeByPath(path, fileSystem);
+                        await addFolderToZip(zip, folderNode, item.name);
+                    } else {
+                        const storagePath = `${currentUser.id}/${item.path}`;
+                        const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
+                        if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
+                        zip.file(item.name, downloadData); // downloadData is already a Blob
                     }
                 });
-            } else {
-                filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
+                await Promise.all(promises);
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(zipBlob);
+                link.download = `export_${new Date().toISOString().slice(0, 10)}.zip`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+            } catch (error) {
+                console.error('ZIP creation failed:', error);
+                alert('Failed to create ZIP file: ' + error.message);
+            } finally {
+                hideLoader();
             }
-            if (filesToDeleteFromStorage.length > 0) {
-                const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
-                if (storageError) console.warn("Could not delete from storage:", storageError.message);
+        }
+
+        async function addFolderToZip(zipFolder, node, folderName) {
+            const dir = zipFolder.folder(folderName);
+            for (const item of node.children) {
+                if (item.is_folder) {
+                    const subNode = findNodeByPath(item.path, fileSystem);
+                    await addFolderToZip(dir, subNode, item.name);
+                } else {
+                    const storagePath = `${currentUser.id}/${item.path}`;
+                    const { data: downloadData, error } = await supabaseClient.storage.from(BUCKET_NAME).download(storagePath);
+                    if (error) throw new Error(`Download failed for ${item.name}: ${error.message}`);
+                    dir.file(item.name, downloadData); // downloadData is Blob
+                }
             }
-            const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
-            if (dbError) throw dbError;
-            if (selectedFile && selectedFile.id === item.id) {
-                selectedFile = null;
+        }
+
+        // === File/Folder Operations ===
+        async function uploadFiles(files, parentPath) {
+            if (!files.length) return;
+            showLoader(`Uploading ${files.length} file(s)...`);
+            let successCount = 0;
+            let errorCount = 0;
+            for (const file of files) {
+                const finalName = file.name;
+                const newPath = `${parentPath}/${finalName}`;
+                const storagePath = `${currentUser.id}/${newPath}`;
+                try {
+                    // Check if file already exists
+                    const { data: existing, error: checkError } = await supabaseClient
+                        .from('files')
+                        .select('id')
+                        .eq('parent_path', parentPath)
+                        .eq('name', finalName)
+                        .maybeSingle(); // safer than .single()
+                    if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                    if (existing) {
+                        alert(`File "${finalName}" already exists.`);
+                        continue;
+                    }
+
+                    // Upload to storage
+                    const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, file, { upsert: true });
+                    if (uploadError) throw uploadError;
+
+                    // Insert record into database
+                    const { error: insertError } = await supabaseClient.from('files').insert({
+                        user_id: currentUser.id,
+                        name: finalName,
+                        path: newPath,
+                        is_folder: false,
+                        parent_path: parentPath,
+                        size: file.size
+                    });
+                    if (insertError) {
+                        // If DB insert fails, remove the uploaded file from storage
+                        await supabaseClient.storage.from(BUCKET_NAME).remove([storagePath]);
+                        throw insertError;
+                    }
+                    successCount++;
+                } catch (err) {
+                    console.error('Upload failed:', err);
+                    errorCount++;
+                }
             }
-            await refreshFileSystem();
-        } catch (error) {
-            console.error('Error deleting item:', error);
-            alert(`Could not delete item: ${error.message}`);
-        } finally {
+            const message = `${successCount} file(s) uploaded successfully.` +
+                (errorCount > 0 ? `\n${errorCount} file(s) failed.` : '');
+            alert(message);
+            if (uploadModal) uploadModal.style.display = 'none';
+            resetInputs();
+            await refreshFileSystem(); // Refresh UI
             hideLoader();
         }
-    }
 
-    function updateFolderSelection() {
-        folderSelect.innerHTML = '<option value="root">Root</option>';
-        function addOptions(folder, prefix = '') {
-            folder.children.forEach(item => {
+        async function renameItem(item) {
+            const nameWithoutExt = item.name.split('.').slice(0, -1).join('.');
+            const currentName = item.is_folder ? item.name : nameWithoutExt;
+            const newNameRaw = prompt(`Enter new name for "${item.name}":`, currentName);
+            if (!newNameRaw || newNameRaw === currentName || newNameRaw.includes('/')) {
+                if (newNameRaw) alert("Invalid name or name unchanged.");
+                return;
+            }
+            showLoader('Renaming...');
+            try {
                 if (item.is_folder) {
-                    const option = document.createElement('option');
-                    option.value = item.path;
-                    option.textContent = `${prefix}${item.name}`;
-                    folderSelect.appendChild(option);
-                    addOptions(item, `${prefix}${item.name}/`);
+                    await renameFolder(item, newNameRaw);
+                } else {
+                    await renameFile(item, newNameRaw);
+                }
+                await refreshFileSystem(); // Refresh UI
+            } catch (error) {
+                console.error('Rename failed:', error);
+                alert(`Could not rename item: ${error.message}`);
+            } finally {
+                hideLoader();
+            }
+        }
+
+        async function renameFile(item, newNameRaw) {
+            const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : '';
+            const newName = `${newNameRaw}${ext}`;
+            
+            // Check for name conflict
+            const { data: existing, error: checkError } = await supabaseClient
+                .from('files').select('id').eq('parent_path', item.parent_path).eq('name', newName).single();
+            if (checkError && checkError.code !== 'PGRST116') throw checkError;
+            if (existing) throw new Error('A file with that name already exists in this folder.');
+
+            const newPath = `${item.parent_path}/${newName}`;
+            const oldStoragePath = `${currentUser.id}/${item.path}`;
+            const newStoragePath = `${currentUser.id}/${newPath}`;
+
+            // Move file in storage
+            const { error: moveError } = await supabaseClient.storage.from(BUCKET_NAME).move(oldStoragePath, newStoragePath);
+            if (moveError) throw moveError;
+
+            // Update database record
+            const { error: updateError } = await supabaseClient
+                .from('files').update({ name: newName, path: newPath }).eq('id', item.id);
+            if (updateError) {
+                // Rollback storage move if DB update fails
+                await supabaseClient.storage.from(BUCKET_NAME).move(newStoragePath, oldStoragePath);
+                throw updateError;
+            }
+        }
+
+        async function renameFolder(item, newName) {
+            const oldPath = item.path;
+            const newPath = `${item.parent_path}/${newName}`;
+
+            // Get all descendants of the folder
+            const { data, error: fetchError } = await supabaseClient
+                .from('files')
+                .select('*')
+                .like('path', `${oldPath}/%`);
+            if (fetchError) throw fetchError;
+
+            const descendants = Array.isArray(data) ? data : [];
+            const filesToMove = descendants.filter(d => !d.is_folder);
+
+            // Move files in storage first
+            if (filesToMove.length > 0) {
+                const movePromises = filesToMove.map(file => {
+                    const fileNewPath = file.path.replace(oldPath, newPath);
+                    return supabaseClient.storage.from(BUCKET_NAME).move(
+                        `${currentUser.id}/${file.path}`,
+                        `${currentUser.id}/${fileNewPath}`
+                    );
+                });
+                const moveResults = await Promise.all(movePromises);
+                const firstMoveError = moveResults.find(res => res.error);
+                if (firstMoveError) {
+                    throw new Error(`Failed to move a file in storage: ${firstMoveError.error.message}`);
+                }
+            }
+
+            // Update paths in database for folder and all descendants
+            const recordsToUpdate = [item, ...descendants].map(record => ({
+                id: record.id,
+                user_id: currentUser.id,
+                name: record.id === item.id ? newName : record.name,
+                path: record.path.replace(oldPath, newPath),
+                parent_path: record.parent_path.replace(oldPath, newPath),
+            }));
+            const { error: updateError } = await supabaseClient.from('files').upsert(recordsToUpdate);
+            if (updateError) {
+                // Note: Rollback for DB is complex and not implemented here.
+                // Consider more robust error handling or transactions if needed.
+                throw new Error(`Database update failed: ${updateError.message}`);
+            }
+        }
+
+        async function deleteItem(item) {
+            if (!confirm(`Are you sure you want to delete "${item.name}"? This cannot be undone.`)) return;
+            showLoader('Deleting...');
+            try {
+                let filesToDeleteFromStorage = [];
+                let recordsToDeleteFromDb = [item.id];
+
+                if (item.is_folder) {
+                    // Find all descendants of the folder
+                    const { data: descendants, error } = await supabaseClient.from('files').select('id, path, is_folder').like('path', `${item.path}/%`);
+                    if (error) throw error;
+                    descendants.forEach(d => {
+                        recordsToDeleteFromDb.push(d.id);
+                        if (!d.is_folder) {
+                            filesToDeleteFromStorage.push(`${currentUser.id}/${d.path}`);
+                        }
+                    });
+                } else {
+                    filesToDeleteFromStorage.push(`${currentUser.id}/${item.path}`);
+                }
+
+                // Delete files from storage (warn if fails, but continue)
+                if (filesToDeleteFromStorage.length > 0) {
+                    const { error: storageError } = await supabaseClient.storage.from(BUCKET_NAME).remove(filesToDeleteFromStorage);
+                    if (storageError) console.warn("Could not delete from storage:", storageError.message);
+                }
+
+                // Delete records from database
+                const { error: dbError } = await supabaseClient.from('files').delete().in('id', recordsToDeleteFromDb);
+                if (dbError) throw dbError;
+
+                // Clear selection if deleted item was selected
+                if (selectedFile && selectedFile.id === item.id) {
+                    selectedFile = null;
+                }
+
+                await refreshFileSystem(); // Refresh UI
+            } catch (error) {
+                console.error('Error deleting item:', error);
+                alert(`Could not delete item: ${error.message}`);
+            } finally {
+                hideLoader();
+            }
+        }
+
+        // === Folder Selection for Upload Modal ===
+        function updateFolderSelection() {
+            if (!folderSelect) return;
+            folderSelect.innerHTML = '<option value="root">Root</option>';
+            function addOptions(folder, prefix = '') {
+                folder.children.forEach(item => {
+                    if (item.is_folder) {
+                        const option = document.createElement('option');
+                        option.value = item.path;
+                        option.textContent = `${prefix}${item.name}`;
+                        folderSelect.appendChild(option);
+                        addOptions(item, `${prefix}${item.name}/`);
+                    }
+                });
+            }
+            addOptions(fileSystem);
+        }
+
+        function resetInputs() {
+            if (fileInput) fileInput.value = '';
+        }
+
+        // === Event Listeners ===
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Set a random page title
+            const pageTitle = document.getElementById('page-title');
+            const quotes = [
+                "\"Less is more.\"", "\"Stay hungry, stay foolish.\"", "\"What you seek is seeking you.\"",
+                "\"Be consistent in not being inconsistent.\"", "\"Be yourself; everyone else is already taken.\"",
+                "\"Happiness depends upon ourselves.\"", "\"Act, don't react.\"", "\"The obstacle is the way.\"",
+                "\"Dream big. Start small.\"", "\"Simplicity is the ultimate sophistication.\"", "\"Do it scared.\""
+            ];
+            const randomIndex = Math.floor(Math.random() * quotes.length);
+            pageTitle.textContent = quotes[randomIndex];
+
+            // Check user session
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            if (error || !session) {
+                window.location.href = 'login.html';
+                return;
+            }
+            currentUser = session.user;
+
+            // Initialize app
+            initializeBrowserHistory();
+            await refreshFileSystem();
+        });
+
+        // Storage Widget Toggle
+        if (storageWidgetHeader && storageWidgetContent && storageWidgetToggle) {
+            storageWidgetHeader.addEventListener('click', () => {
+                const isCollapsed = storageWidgetContent.classList.contains('collapsed');
+                if (isCollapsed) {
+                    storageWidgetContent.classList.remove('collapsed');
+                    storageWidgetToggle.classList.remove('collapsed');
+                    storageWidgetToggle.textContent = '▼'; // Down arrow
+                } else {
+                    storageWidgetContent.classList.add('collapsed');
+                    storageWidgetToggle.classList.add('collapsed');
+                    storageWidgetToggle.textContent = '▲'; // Up arrow
                 }
             });
         }
-        addOptions(fileSystem);
-    }
 
-    function resetInputs() {
-        fileInput.value = '';
-    }
-
-    logoutBtn.addEventListener('click', async () => {
-        await supabaseClient.auth.signOut();
-        window.location.href = 'login.html';
-    });
-
-    window.addEventListener('click', (e) => {
-        if (e.target === uploadModal) {
-            uploadModal.style.display = 'none';
-            resetInputs();
+        // Back Button
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                if (currentPath === 'root') return;
+                const parts = currentPath.split('/');
+                parts.pop();
+                navigateTo(parts.join('/') || 'root');
+            });
         }
-    });
-    // === STORAGE WIDGET TOGGLE ===
-const storageWidget = document.getElementById('storageWidget');
-const storageWidgetToggle = document.getElementById('storageWidgetToggle');
-let isWidgetOpen = true;
 
-storageWidgetToggle.addEventListener('click', () => {
-    if (isWidgetOpen) {
-        storageWidget.style.maxHeight = '40px';
-        storageWidget.style.opacity = 0.8;
-        storageWidgetToggle.textContent = '📊';
-    } else {
-        storageWidget.style.maxHeight = '300px';
-        storageWidget.style.opacity = 1;
-        storageWidgetToggle.textContent = '❌';
-    }
-    isWidgetOpen = !isWidgetOpen;
-});
-</script>
-<!-- Floating Storage Widget -->
-<div id="storageWidget" style="
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 360px;
-    max-height: 300px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-    overflow: hidden;
-    z-index: 1000;
-    transition: max-height 0.4s ease, opacity 0.3s ease;
-    opacity: 1;
-">
-    <!-- Toggle Button -->
-    <div id="storageWidgetToggle" style="
-        position: absolute;
-        top: -30px;
-        right: 0;
-        width: 30px;
-        height: 30px;
-        background: #2e86de;
-        color: white;
-        border-radius: 5px;
-        font-size: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    ">📊</div>
+        // Search and Filter
+        if (searchInput) searchInput.addEventListener('input', renderFileList);
+        if (filterSelect) filterSelect.addEventListener('change', renderFileList);
 
-    <!-- Content -->
-    <div id="storageWidgetContent" style="padding: 15px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #333;">Storage Usage</h3>
-        <div id="usageText" style="font-weight: bold; color: #555; font-size: 12px;">Calculating...</div>
-        <div class="progress-bar-background" style="
-            width: 100%;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            height: 12px;
-            margin: 8px 0;
-            overflow: hidden;
-        ">
-            <div id="usageProgressBar" class="progress-bar-foreground" style="
-                width: 0%;
-                height: 100%;
-                background-color: #2e86de;
-                border-radius: 5px;
-                transition: width 0.5s ease-in-out;
-            "></div>
-        </div>
-        <div style="height: 150px; margin-top: 10px;">
-            <canvas id="storageChart"></canvas>
-        </div>
-    </div>
-</div>
+        // Upload Modal
+        if (openModalBtn) {
+            openModalBtn.addEventListener('click', () => {
+                updateFolderSelection();
+                if (folderSelect && folderSelect.querySelector(`option[value="${currentPath}"]`)) {
+                    folderSelect.value = currentPath;
+                }
+                if (uploadModal) uploadModal.style.display = 'flex';
+            });
+        }
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        if (closeModalBtn) {
+            closeModalBtn.onclick = () => {
+                if (uploadModal) uploadModal.style.display = 'none';
+                resetInputs();
+            };
+        }
+        if (uploadBtn) {
+            uploadBtn.addEventListener('click', () => {
+                const files = fileInput ? fileInput.files : null;
+                if (!files || !files.length) {
+                    alert('Select files first.');
+                    return;
+                }
+                if (folderSelect) {
+                    uploadFiles(files, folderSelect.value);
+                }
+            });
+        }
+
+        // Drag & Drop Upload
+        if (dropZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+            dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'), false);
+            dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'), false);
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'), false);
+            dropZone.addEventListener('drop', (e) => {
+                dropZone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                uploadFiles(files, currentPath);
+            }, false);
+        }
+
+        // New Folder Button
+        if (createFolderBtn) {
+            createFolderBtn.addEventListener('click', async () => {
+                const folderName = prompt("Enter folder name (cannot contain '/'):");
+                if (!folderName || folderName.includes('/')) {
+                    if (folderName) alert("Folder name cannot contain '/'");
+                    return;
+                }
+                const parentPath = currentPath;
+                const newPath = `${parentPath}/${folderName}`;
+                showLoader('Creating folder...');
+                try {
+                    const { error: insertError } = await supabaseClient.from('files').insert({
+                        user_id: currentUser.id,
+                        name: folderName,
+                        path: newPath,
+                        is_folder: true,
+                        parent_path: parentPath
+                    });
+                    if (insertError) throw insertError;
+                    await refreshFileSystem(); // Refresh UI
+                } catch (error) {
+                    console.error('Error creating folder:', error);
+                    alert('Failed to create folder.');
+                } finally {
+                    hideLoader();
+                }
+            });
+        }
+
+        // Export ZIP Button
+        if (exportZipBtn) {
+            exportZipBtn.addEventListener('click', async () => {
+                await downloadSelectedAsZip();
+            });
+        }
+
+        // Preview Modal Close
+        if (previewModalClose) {
+            previewModalClose.onclick = () => {
+                if (previewModal) previewModal.style.display = 'none';
+            };
+        }
+        if (previewModal) {
+            previewModal.onclick = (event) => {
+                if (event.target === previewModal) {
+                    previewModal.style.display = 'none';
+                }
+            };
+        }
+
+        // Logout Button
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                await supabaseClient.auth.signOut();
+                window.location.href = 'login.html';
+            });
+        }
+
+        // Click outside modals to close
+        window.addEventListener('click', (e) => {
+            if (e.target === uploadModal) {
+                if (uploadModal) uploadModal.style.display = 'none';
+                resetInputs();
+            }
+        });
+    </script>
 </body>
-
 </html>

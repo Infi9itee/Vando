@@ -5,86 +5,78 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-
 <body>
-    <div class="main">
-        <h1>ভাণ্ড</h1>
-        <h3>Enter your login credentials</h3>
+  <div class="main">
+    <h1>ভাণ্ড</h1>
+    <h3>Enter your login credentials</h3>
 
-        <form id="login-form">
-            <label for="first">
-                Email:
-            </label>
-            <input type="text" id="first" name="first" 
-                placeholder="Enter your Email" required>
+    <form id="login-form">
+      <label for="email">Email:</label>
+      <input type="email" id="email" name="email"
+             placeholder="Enter your Email" required>
 
-            <label for="password">
-                Password:
-            </label>
-            <input type="password" id="password" name="password" 
-                placeholder="Enter your Password" required>
+      <label for="password">Password:</label>
+      <input type="password" id="password" name="password"
+             placeholder="Enter your Password" required>
 
-            <div class="wrap">
-                <button type="submit">
-                    Submit
-                </button>
-            </div>
-        </form>
-        
-        <p id="message"></p>
-        
-        <p>Not registered?
-            <a href="signup.html" style="text-decoration: none;">
-                Create an account
-            </a>
-        </p>
-    </div>
-    
-    <script>
-        // --- CONFIGURATION ---
+      <button type="submit">Login</button>
+    </form>
+
+    <p id="message"></p>
+
+    <p>Not registered?
+      <a href="signup.html" class="signup-link">Create an account</a>
+    </p>
+  </div>
+
+  <script>
+    // --- CONFIGURATION ---
         const SUPABASE_URL = 'https://prpeuaaloxdjnbcixdxc.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycGV1YWFsb3hkam5iY2l4ZHhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMTc3NDQsImV4cCI6MjA2OTg5Mzc0NH0.YcGaYM34RB_aXZ-RD3vAQXh70OK33e19QLzVrhCU2V4';
 
-        // --- INITIALIZE SUPABASE ---
-        const { createClient } = supabase;
-        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // --- GET HTML ELEMENTS ---
-        const loginForm = document.getElementById('login-form');
-        const usernameInput = document.getElementById('first');
-        const passwordInput = document.getElementById('password');
-        const messageElement = document.getElementById('message');
+    // --- INITIALIZE SUPABASE ---
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // --- ATTACH EVENT LISTENER ---
-        loginForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            
-            const username = usernameInput.value.trim();
-            const password = passwordInput.value.trim();
-            
-            if (!username || !password) {
-                messageElement.textContent = 'Please fill in both fields.';
-                return;
-            }
-            
-            try {
-                const { data, error } = await supabaseClient.auth.signInWithPassword({
-                    email: username,
-                    password: password
-                });
-                
-                if (error) {
-                    messageElement.textContent = `Error: ${error.message}`;
-                } else {
-                    // Store user data in localStorage
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    // Redirect to the file storage page
-                    window.location.href = "dashboard.html";
-                }
-            } catch (err) {
-                messageElement.textContent = `Network error: ${err.message}`;
-            }
+    const loginForm = document.getElementById('login-form');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const messageElement = document.getElementById('message');
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value.trim();
+
+      if (!email || !password) {
+        messageElement.textContent = 'Please fill in both fields.';
+        return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email,
+          password
         });
-    </script>
+
+        if (error) {
+          messageElement.style.color = "crimson";
+          messageElement.textContent = `Error: ${error.message}`;
+        } else {
+          messageElement.style.color = "green";
+          messageElement.textContent = "Login successful! Redirecting...";
+          // optional small delay so user sees the message
+          setTimeout(() => {
+            window.location.href = "dashboard.html";
+          }, 800);
+        }
+      } catch (err) {
+        messageElement.style.color = "crimson";
+        messageElement.textContent = `Network error: ${err.message}`;
+      }
+    });
+  </script>
 </body>
 </html>
